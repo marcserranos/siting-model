@@ -44,6 +44,8 @@ grid = {r["id"]: r for r in csv.DictReader(open("data/grid.csv"))}
 pv = {r[0]: r for r in csv.reader(open("data/pvgis.csv"))}
 elev = {r[0]: r for r in csv.reader(open("data/elev.csv"))}
 isa = {r["id"]: r for r in csv.DictReader(open("data/isa.csv"))}
+isa2 = {r["id"]: r for r in csv.DictReader(open("data/isa2.csv"))}
+power = {r["id"]: r for r in csv.DictReader(open("data/power.csv"))}
 
 cells, skipped = [], 0
 for cid, g in grid.items():
@@ -63,13 +65,17 @@ for cid, g in grid.items():
         float(s["f_alta"]), float(s["f_moderada"]), float(s["f_baja"]),  # 6-11 ISA fractions
         round(hav(lat, lon, CITIES[ci_j][1], CITIES[ci_j][2])), ci_j,    # 12-13 d_city km, idx
         round(hav(lat, lon, DCS[dc_j][1], DCS[dc_j][2])), dc_j,          # 14-15 d_dc km, idx
+        float(isa2[cid]["isa_val"] or 0), float(isa2[cid]["eol_val"] or 0),  # 16-17 continuous ISA pv/wind
+        float(isa2[cid]["eol_dev"] or 0), int(isa2[cid]["patch_ha"]),        # 18-19 wind dev frac, patch ha
+        float(power[cid]["ws50"]), int(power[cid]["precip_mm_yr"]),          # 20-21 wind m/s, precip mm/yr
     ])
 
 out = {
     "meta": {
         "built": "2026-07-06", "step_deg": 0.1,
         "fields": ["lat","lon","ccaa","pv_yield_kwh_kwp","elev_m","relief_m","f_valid",
-                   "f_maxima","f_muyalta","f_alta","f_moderada","f_baja","d_city_km","city_idx","d_dc_km","dc_idx"],
+                   "f_maxima","f_muyalta","f_alta","f_moderada","f_baja","d_city_km","city_idx","d_dc_km","dc_idx",
+                   "isa_val_pv","isa_val_eol","eol_dev_frac","patch_ha","ws50_ms","precip_mm_yr"],
         "cell_area_km2_approx": 94, "isa_source": "MITECO Zonificación FTV 2023 (25m, sampled 200m)",
         "pv_source": "PVGIS v5.3 SARAH3, 1kWp fixed optimal tilt, 14% losses",
         "elev_source": "Open-Meteo / Copernicus GLO-90, 4x4 subgrid"

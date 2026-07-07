@@ -63,6 +63,15 @@
 - README.md written (thesis w/ verified numbers, variable table + cuts, methodology, limitations).
 - Run: `cd web && python3 -m http.server 8000` (or preview config in `.claude/launch.json`).
 
+## v2 (2026-07-07, session 2 — Marc's feedback round)
+Feedback: too abstract → satellite + parcels; use continuous ISA + wind maps; catastro is a big need; be metacritical; costs; wind/rain.
+- **Data added:** continuous PV ISA (Modelo_ISA_FTV_2023, values ×1000, 10=least sensitive), wind classified+continuous ISA (EOL zips, same page), NASA POWER 0.5° climatology (WS50M + PRECTOTCORR, 4 regional calls — note: 1 param/request, ≥2° bbox), largest-contiguous-developable-patch per cell (scipy label on 200m mask; meseta is effectively one 2M-ha patch — patch shown as context, not gate). New pipeline: `fetch_power.py`, `sample_isa2.py`; cells.json now 22 fields, 548 KB.
+- **Catastro RESOLVED (was ⚠️):** OVC REST works with `CoorX/CoorY` (my earlier probe used wrong param names) AND sends `Access-Control-Allow-Origin: *` → live browser lookup shipped: click → Consulta_RCCOOR (refcat) → Consulta_DNPRC (class RU/UR, luso, surface, cultivos, official mapa.aspx deep link). Catastro WMS (`layers=Catastro`) shipped as parcel-boundary overlay (zoom ≥13). Ownership NAMES are protected — that stays manual (Registro de la Propiedad).
+- **SIGPAC:** both public WMS endpoints broken/moved (mapama 500s, fega 404s) — visor deep-link only.
+- **Dashboard v2:** satellite basemap toggle (Esri) + Catastro overlay + grid on/off; cells auto-fade at zoom ≥12, hidden ≥15; 4th mode "1 GW hybrid" (55% PV/35% wind/10% backup, BESS 10→7 MWh/MW); capex model (PV .55, wind 1.15 M€/MW, BESS .2 M€/MWh, backup .45, land 12k€/ha) with €/MW-IT map view; 3 new score layers (wind res, wind ISA, rain/soiling — default weight 0 outside hybrid).
+- **Verified in browser:** parcel lookup end-to-end (13005A03800072, Rústica/Agrario/14.3 ha), Esri+Catastro WMS tiles 200, hybrid top-3 = Ebro corridor (Cierzo — plausible), solar-only capex 5.9 vs hybrid 6.7 M€/MW-IT (honest: wind buys firmness, not capex, in Spain).
+- README: added resolution rationale, buyer use-case/missing-info section, cost assumptions, complementarity of classified vs continuous ISA.
+
 ## Open items for the week (not blockers)
 - Sweep the remaining low-confidence CCAA dossiers (esp. Castilla y León, Andalucía) with the same primary-source treatment as Aragón/Extremadura.
 - Catastro parcel deep-dive on top-5 cells (Sede Electrónica manual; INSPIRE ATOM endpoints were unreachable from this network — retry from Spanish IP?).
