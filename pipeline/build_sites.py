@@ -45,6 +45,21 @@ CURATED = [  # name, lat, lon, status, note (sources: PROGRESS.md research log)
     ["Merlin Arasur (Alava)", 42.73, -2.87, "operating", "Operating/expanding"],
     ["A Coruna DC", 43.36, -8.41, "announced", "Announced project"],
     ["Picassent DC", 39.36, -0.46, "announced", "Announced (Valencia)"],
+    # From datacentermap.com market pages, read via browser session 2026-07-09 (town-center coords):
+    ["Tillion Aragon (Azora)", 41.70, -0.78, "announced", "Hyperscale campus, Villamayor de Gallego (Azora/Tillion)"],
+    ["ACS La Puebla de Alfinden", 41.66, -0.75, "announced", "150 MW, EUR 1.2B, construction planned H1 2027"],
+    ["Green IT Aragon (SAMCA)", 41.79, -1.22, "announced", "EUR 2.6B campus, 300 MW planned, Pedrola/Luceni, local renewables"],
+    ["DayOne Aragon Escatron", 41.29, -0.33, "announced", "Campus leveraging adjacent gas plant + renewables — BYOP-adjacent"],
+    ["Vantage Zaragoza", 41.77, -0.82, "announced", "EUR 3.2B hyperscale campus, 40 ha, 5 phases, Villanueva de Gallego"],
+    ["QTS Calatorao (Blackstone)", 41.52, -1.35, "announced", "300 MW planned campus"],
+    ["Box2bit Calatayud", 41.35, -1.64, "land", "400,000 m2 site secured, Poligono La Charluca"],
+    ["Box2bit Proyecto Ebro", 41.34, -1.22, "announced", "EUR 3.4B, Carinena (Entrevinas industrial estate)"],
+    ["Iridium PTR Zaragoza", 41.60, -0.83, "land", "18 ha acquired in Parque Tecnologico del Reciclado"],
+    ["AWS La Puebla de Hijar", 41.21, -0.44, "announced", "AWS eu-south-2 expansion site (Teruel)"],
+    ["AWS San Mateo de Gallego", 41.83, -0.77, "announced", "AWS eu-south-2 expansion site"],
+    ["Proyecto Altamira (Stoneshield)", 43.38, -3.87, "announced", "XDC Properties multi-building campus, Villaescusa (Cantabria); PE-backed"],
+    ["EdgeMode Mora", 39.68, -3.77, "announced", "300 MW NATURAL-GAS behind-the-meter campus w/ Bloom Energy fuel cells — BYOP precedent, gas variant"],
+    ["Box2bit AXIS South (Recas)", 40.06, -3.99, "land", "134,000 m2 site, half of AXIS project"],
 ]
 dcs = [dict(name=n, lat=la, lon=lo, status=s, note=nt, src="research") for n,la,lo,s,nt in CURATED]
 try:

@@ -448,12 +448,16 @@ async function lookupParcel(pt){
 }
 
 (async function(){
-  const V = "?v=3";
-  const [cellsR, regR, farmR, dcR] = await Promise.all([
-    fetch("data/cells.json"+V), fetch("data/regions.json"+V),
-    fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
-  DATA = await cellsR.json(); REGIONS = await regR.json();
-  FARMS = await farmR.json(); DCJSON = await dcR.json();
+  if(window.__CELLS){  // data shipped as script files -> works from file:// with no server
+    DATA = window.__CELLS; REGIONS = window.__REGIONS; FARMS = window.__FARMS; DCJSON = window.__DCS;
+  } else {
+    const V = "?v=4";
+    const [cellsR, regR, farmR, dcR] = await Promise.all([
+      fetch("data/cells.json"+V), fetch("data/regions.json"+V),
+      fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
+    DATA = await cellsR.json(); REGIONS = await regR.json();
+    FARMS = await farmR.json(); DCJSON = await dcR.json();
+  }
   DATA.cells.forEach((c,i)=> byKey.set(key(c[F.LAT], c[F.LON]), i));
 
   map = L.map("map", {zoomControl:true, maxZoom:19}).setView([40.2, -3.6], 6);

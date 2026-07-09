@@ -110,5 +110,117 @@
   "status": "announced",
   "note": "Announced (Valencia)",
   "src": "research"
+ },
+ {
+  "name": "Tillion Aragon (Azora)",
+  "lat": 41.7,
+  "lon": -0.78,
+  "status": "announced",
+  "note": "Hyperscale campus, Villamayor de Gallego (Azora/Tillion)",
+  "src": "research"
+ },
+ {
+  "name": "ACS La Puebla de Alfinden",
+  "lat": 41.66,
+  "lon": -0.75,
+  "status": "announced",
+  "note": "150 MW, EUR 1.2B, construction planned H1 2027",
+  "src": "research"
+ },
+ {
+  "name": "Green IT Aragon (SAMCA)",
+  "lat": 41.79,
+  "lon": -1.22,
+  "status": "announced",
+  "note": "EUR 2.6B campus, 300 MW planned, Pedrola/Luceni, local renewables",
+  "src": "research"
+ },
+ {
+  "name": "DayOne Aragon Escatron",
+  "lat": 41.29,
+  "lon": -0.33,
+  "status": "announced",
+  "note": "Campus leveraging adjacent gas plant + renewables \u2014 BYOP-adjacent",
+  "src": "research"
+ },
+ {
+  "name": "Vantage Zaragoza",
+  "lat": 41.77,
+  "lon": -0.82,
+  "status": "announced",
+  "note": "EUR 3.2B hyperscale campus, 40 ha, 5 phases, Villanueva de Gallego",
+  "src": "research"
+ },
+ {
+  "name": "QTS Calatorao (Blackstone)",
+  "lat": 41.52,
+  "lon": -1.35,
+  "status": "announced",
+  "note": "300 MW planned campus",
+  "src": "research"
+ },
+ {
+  "name": "Box2bit Calatayud",
+  "lat": 41.35,
+  "lon": -1.64,
+  "status": "land",
+  "note": "400,000 m2 site secured, Poligono La Charluca",
+  "src": "research"
+ },
+ {
+  "name": "Box2bit Proyecto Ebro",
+  "lat": 41.34,
+  "lon": -1.22,
+  "status": "announced",
+  "note": "EUR 3.4B, Carinena (Entrevinas industrial estate)",
+  "src": "research"
+ },
+ {
+  "name": "Iridium PTR Zaragoza",
+  "lat": 41.6,
+  "lon": -0.83,
+  "status": "land",
+  "note": "18 ha acquired in Parque Tecnologico del Reciclado",
+  "src": "research"
+ },
+ {
+  "name": "AWS La Puebla de Hijar",
+  "lat": 41.21,
+  "lon": -0.44,
+  "status": "announced",
+  "note": "AWS eu-south-2 expansion site (Teruel)",
+  "src": "research"
+ },
+ {
+  "name": "AWS San Mateo de Gallego",
+  "lat": 41.83,
+  "lon": -0.77,
+  "status": "announced",
+  "note": "AWS eu-south-2 expansion site",
+  "src": "research"
+ },
+ {
+  "name": "Proyecto Altamira (Stoneshield)",
+  "lat": 43.38,
+  "lon": -3.87,
+  "status": "announced",
+  "note": "XDC Properties multi-building campus, Villaescusa (Cantabria); PE-backed",
+  "src": "research"
+ },
+ {
+  "name": "EdgeMode Mora",
+  "lat": 39.68,
+  "lon": -3.77,
+  "status": "announced",
+  "note": "300 MW NATURAL-GAS behind-the-meter campus w/ Bloom Energy fuel cells \u2014 BYOP precedent, gas variant",
+  "src": "research"
+ },
+ {
+  "name": "Box2bit AXIS South (Recas)",
+  "lat": 40.06,
+  "lon": -3.99,
+  "status": "land",
+  "note": "134,000 m2 site, half of AXIS project",
+  "src": "research"
  }
 ]
