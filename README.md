@@ -27,6 +27,9 @@ A static, fully client-side dashboard (`web/`) over a precomputed national grid 
 - **Cost model** — screening-grade capex per MW-IT (PV + wind + BESS + backup + land), per cell per mode, viewable as its own map layer. The map answers "where is firm off-grid power cheapest to build," not just "where scores high."
 - **Click any cell** — layer contributions, build math, MITECO sensitivity composition (classified stack + continuous PV/wind ISA values), the regional regulatory dossier with sources, nearest announced DC project.
 - **Single-layer views** — inspect any input layer as its own choropleth.
+- **Ground truth (v3)** — all 3,215 OSM-mapped solar plants (~43 GW) drawn on the map and aggregated per cell as an "existing PV build-out" layer (dual-sign: follow proven zones or hunt whitespace), plus a datacenter layer with status taxonomy (operating / construction / announced / land) from this project's primary-source research — `web/data/datacenters.json` is deliberately hand-editable because datacentermap.com and baxtel.com expose no free API (both rate-limit scrapers; their data is their product).
+- **Reality check panel (v3)** — live scatter of model score vs. built PV per cell. Current result: the top-20% scored cells hold ~35% of existing capacity (~1.75× concentration) — the model tracks revealed developer preference without being fitted to it, and the residual "high score, zero PV" cells are the land-banking candidates.
+- **Shareable state (v3)** — the full model state (mode, weights, gates, view) lives in the URL hash; copy the link to share an exact scenario.
 
 ## The six variables (and what got cut)
 

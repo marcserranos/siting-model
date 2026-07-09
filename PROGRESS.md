@@ -72,6 +72,15 @@ Feedback: too abstract → satellite + parcels; use continuous ISA + wind maps; 
 - **Verified in browser:** parcel lookup end-to-end (13005A03800072, Rústica/Agrario/14.3 ha), Esri+Catastro WMS tiles 200, hybrid top-3 = Ebro corridor (Cierzo — plausible), solar-only capex 5.9 vs hybrid 6.7 M€/MW-IT (honest: wind buys firmness, not capex, in Spain).
 - README: added resolution rationale, buyer use-case/missing-info section, cost assumptions, complementarity of classified vs continuous ISA.
 
+## v3 (2026-07-07, session 3 — ground truth & validation round)
+Feedback: map existing solar farms (CV model proposed — declined, see below), map DCs incl. announced/land-bank (datacentermap/baxtel), external-critic pass, keep lean.
+- **Solar farms: OSM Overpass instead of training a detector.** `power=plant + plant:source=solar` in ES → 3,215 plants, 706 capacity-tagged, rest estimated from bbox (60% fill, 50 MWp/km²) → ~43.2 GW (vs ~32 GW real utility fleet — bbox overestimate acceptable for screening). Rationale vs CV: OSM Spain solar coverage is substantially complete for utility scale; a tile-scan detector = ~1M Esri tiles download (ToS risk) + training data that... is itself derived from OSM. CV only wins for *recency* (plants < ~1 yr old) — noted as future delta-detection idea.
+- **Validation result (the headline):** top-20% scored cells hold ~35% of mapped PV capacity in passing cells (~1.75× concentration). Model tracks revealed preference without being fitted to it; "high score, no PV" residuals = land-bank candidates. Live scatter panel in sidebar.
+- **Crops-vs-desert question answered with data:** La Mancha cropland ISA 8.9/10, 99% dev; Tabernas 3.7 (18% dev), Monegros 2.5, Bardenas 0.56, Tierra de Campos 0.13 (2% dev!). Spain's "deserts"/steppes are protected habitat (steppe birds — MITECO model weights them heavily); intensive farmland is the LOW-sensitivity substrate. The model preferring cropland is correct behavior, matching where the 43 GW actually went.
+- **Datacenters:** datacentermap.com hard-429s all fetches; baxtel loads via JS (no public API; stage taxonomy incl. "Land Bank" confirmed). Shipped: curated 14-site list w/ statuses (operating/construction/announced/land supported) in hand-editable `web/data/datacenters.json` + status-colored markers. OSM DC query (`telecom/building~data_cent`) timed out on 3 Overpass mirrors ×6 retries — `pipeline/fetch_osm.py` re-fetches both queries with mirror rotation; `build_sites.py` auto-merges `data/osm_dc.json` when present.
+- **Also:** URL-hash shareable state; existing-PV row in detail panel; cache-busting `?v=3` (browser served stale cached app.js/cells.json after edits — remember to bump).
+- New: `pipeline/fetch_osm.py`, `pipeline/build_sites.py`; cells.json field 22 = existing_pv_mw (23 fields).
+
 ## Open items for the week (not blockers)
 - Sweep the remaining low-confidence CCAA dossiers (esp. Castilla y León, Andalucía) with the same primary-source treatment as Aragón/Extremadura.
 - Catastro parcel deep-dive on top-5 cells (Sede Electrónica manual; INSPIRE ATOM endpoints were unreachable from this network — retry from Spanish IP?).

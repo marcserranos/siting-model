@@ -4,7 +4,8 @@
 "use strict";
 
 const F = {LAT:0, LON:1, CCAA:2, EY:3, ELEV:4, RELIEF:5, FVALID:6, FMAX:7, FMUYALTA:8, FALTA:9, FMOD:10, FBAJA:11,
-           DCITY:12, CITYI:13, DDC:14, DCI:15, ISAV:16, EOLV:17, EOLDEV:18, PATCH:19, WS:20, PRECIP:21};
+           DCITY:12, CITYI:13, DDC:14, DCI:15, ISAV:16, EOLV:17, EOLDEV:18, PATCH:19, WS:20, PRECIP:21, PVMW:22};
+const DC_COLORS = {operating:"#e05d5d", construction:"#ff9f43", announced:"#ffe95e", land:"#b388ff"};
 const CELL_HA = 9400;
 const PUE = 1.15, HA_PER_MWP = 2, HA_PER_WIND_MW = 5, BESS_H = {solar:10, hybrid:7};
 // Screening-grade unit costs, M EUR (2026): PV incl. BOS; wind onshore; 4h-class BESS; backup engines; meseta agri land.
@@ -13,16 +14,16 @@ const COST = {pv:0.55, wind:1.15, bess:0.20, backup:0.45, land_ha:0.012};
 const MODES = {
   gw:   {label:"1 GW solar", it:1000, mix:{pv:0.9, wind:0, backup:0.1},
          note:"Hyperscale campus, PV+BESS only. Land need computed from each cell's own yield; aggregates neighboring cells (~30 km).",
-         w:{solar:90, env:80, terrain:70, reg:85, city:-30, dc:20, wind:0, eolv:0, rain:0}, gates:{relief:300, dev:0.35}},
+         w:{solar:90, env:80, terrain:70, reg:85, city:-30, dc:20, wind:0, eolv:0, rain:0, pvx:0}, gates:{relief:300, dev:0.35}},
   gwh:  {label:"1 GW hybrid", it:1000, mix:{pv:0.55, wind:0.35, backup:0.1},
          note:"PV + on-site wind. Wind firms winter/night supply and cuts battery + land; needs wind resource AND wind permitting headroom.",
-         w:{solar:70, env:70, terrain:60, reg:85, city:-30, dc:20, wind:60, eolv:50, rain:0}, gates:{relief:300, dev:0.35}},
+         w:{solar:70, env:70, terrain:60, reg:85, city:-30, dc:20, wind:60, eolv:50, rain:0, pvx:0}, gates:{relief:300, dev:0.35}},
   mw100:{label:"100 MW", it:100, mix:{pv:0.9, wind:0, backup:0.1},
          note:"Large single-site campus; fits inside one cell's developable land in most of the meseta.",
-         w:{solar:80, env:70, terrain:60, reg:70, city:20, dc:30, wind:0, eolv:0, rain:0}, gates:{relief:350, dev:0.15}},
+         w:{solar:80, env:70, terrain:60, reg:70, city:20, dc:30, wind:0, eolv:0, rain:0, pvx:0}, gates:{relief:350, dev:0.15}},
   edge: {label:"10 MW edge", it:10, mix:{pv:0.9, wind:0, backup:0.1},
          note:"Regional/edge site; proximity to labor and fiber flips to a positive.",
-         w:{solar:50, env:30, terrain:30, reg:40, city:80, dc:10, wind:0, eolv:0, rain:0}, gates:{relief:500, dev:0.05}},
+         w:{solar:50, env:30, terrain:30, reg:40, city:80, dc:10, wind:0, eolv:0, rain:0, pvx:0}, gates:{relief:500, dev:0.05}},
 };
 
 const clamp = v => Math.max(0, Math.min(1, v));
@@ -49,10 +50,12 @@ const LAYERS = [
    fmt:c=>c[F.DCITY]+" km to "+DATA.cities[c[F.CITYI]][0], norm:c=>1-clamp(c[F.DCITY]/150)},
   {k:"dc", label:"DC cluster proximity", dual:true, hint:"Validated corridor (+) vs uncontested whitespace (−)",
    fmt:c=>c[F.DDC]+" km to "+DATA.dcs[c[F.DCI]][0], norm:c=>1-clamp(c[F.DDC]/250)},
+  {k:"pvx", label:"Existing PV build-out", dual:true, hint:"OSM-mapped solar in cell: follow proven zones (+) or hunt whitespace (−)",
+   fmt:c=>c[F.PVMW]+" MW mapped in cell", norm:c=>clamp(c[F.PVMW]/150)},
 ];
 
-let DATA, REGIONS, map, canvasLayer, baseDark, baseSat, catWMS;
-let state = {mode:"gw", w:{}, on:{}, gates:{}, view:"score", showCells:true};
+let DATA, REGIONS, FARMS, DCJSON, map, canvasLayer, baseDark, baseSat, catWMS;
+let state = {mode:"gw", w:{}, on:{}, gates:{}, view:"score", showCells:true, showFarms:true};
 let scores = [], pass = [], clusterHa = [], capex = [], capexDomain = [8,16], byKey = new Map();
 let selected = -1, clickPt = null;
 
@@ -161,6 +164,15 @@ const CellLayer = L.Layer.extend({
         ctx.strokeRect(p1.x, p1.y, p2.x-p1.x, p2.y-p1.y);
       }
     }
+    if(state.showFarms && FARMS){
+      ctx.globalAlpha = 0.85; ctx.fillStyle = "#43d9f5"; ctx.strokeStyle = "#0b3a44"; ctx.lineWidth = 0.5;
+      for(const f of FARMS){
+        const p = m.latLngToContainerPoint([f[0], f[1]]);
+        if(p.x < -5 || p.x > size.x+5 || p.y < -5 || p.y > size.y+5) continue;
+        const r = Math.min(9, 1.2 + Math.sqrt(f[2])/4);
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 6.283); ctx.fill(); ctx.stroke();
+      }
+    }
   }
 });
 
@@ -189,6 +201,7 @@ function buildUI(){
     if(e.target.checked) map.addLayer(catWMS); else map.removeLayer(catWMS);
   };
   document.getElementById("ov_cells").onchange = e => { state.showCells = e.target.checked; canvasLayer.redraw(); };
+  document.getElementById("ov_pv").onchange = e => { state.showFarms = e.target.checked; canvasLayer.redraw(); };
   setMode("gw");
 }
 
@@ -237,7 +250,59 @@ function refresh(){
   computeScores();
   canvasLayer.redraw();
   renderTop();
+  drawScatter();
+  saveHash();
   if(selected >= 0) showDetail(selected);
+}
+
+// ---------- shareable state ----------
+function saveHash(){
+  const h = {m:state.mode, v:state.view, w:state.w, on:state.on, g:state.gates};
+  history.replaceState(null, "", "#" + encodeURIComponent(JSON.stringify(h)));
+}
+function restoreHash(){
+  try{
+    if(location.hash.length < 3) return;
+    const h = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+    if(!MODES[h.m]) return;
+    setMode(h.m);
+    Object.assign(state.w, h.w); Object.assign(state.on, h.on); Object.assign(state.gates, h.g);
+    state.view = h.v || "score";
+    document.getElementById("viewsel").value = state.view;
+    renderWeights(); renderGates(); refresh();
+  }catch(e){}
+}
+
+// ---------- validation: model score vs existing build-out ----------
+function drawScatter(){
+  const cv = document.getElementById("scatter");
+  if(!cv) return;
+  const ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const pts = [];
+  let totMW = 0;
+  for(let i = 0; i < DATA.cells.length; i++){
+    if(scores[i] < 0) continue;
+    const mw = DATA.cells[i][F.PVMW];
+    totMW += mw;
+    pts.push([scores[i], mw, i]);
+  }
+  if(!pts.length){ document.getElementById("valstat").textContent = "No cells pass gates."; return; }
+  const yMax = Math.log10(1 + Math.max(...pts.map(p=>p[1]), 10));
+  ctx.fillStyle = "#43d9f5";
+  for(const [s, mw, i] of pts){
+    ctx.globalAlpha = mw > 0 ? 0.75 : 0.18;
+    const x = 6 + (s/100)*(W-12), y = H-6 - (Math.log10(1+mw)/yMax)*(H-12);
+    ctx.fillRect(x-1.5, y-1.5, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+  // stat: how much of the existing fleet sits in the model's top-quintile cells?
+  const sorted = [...pts].sort((a,b)=>b[0]-a[0]);
+  const q = Math.max(1, Math.floor(sorted.length/5));
+  const topMW = sorted.slice(0, q).reduce((a,p)=>a+p[1], 0);
+  document.getElementById("valstat").innerHTML =
+    `Top-20% scored cells hold <b>${totMW ? Math.round(100*topMW/totMW) : 0}%</b> of the ${(totMW/1000).toFixed(1)} GW of OSM-mapped PV in passing cells — ` +
+    `x: composite score, y: existing MW (log). Bright dots = cells with built PV.`;
 }
 
 function renderTop(){
@@ -344,6 +409,7 @@ function showDetail(i){
       <tr><td style="color:var(--dim);font-size:11px" colspan="2">${DATA.dcs[c[F.DCI]][3]}</td></tr>
       <tr><td>Nearest city ≥100k</td><td>${DATA.cities[c[F.CITYI]][0]} · ${c[F.DCITY]} km</td></tr>
       <tr><td>Wind 50 m / precip</td><td>${c[F.WS]} m/s · ${c[F.PRECIP]} mm/yr</td></tr>
+      <tr><td>Existing PV mapped in cell (OSM)</td><td>${c[F.PVMW]>0 ? "<b>"+c[F.PVMW]+" MW</b> — proven zone" : "none — whitespace"}</td></tr>
     </table>
     <div class="footnote">Cost constants are screening-grade 2026 figures; edit COST in app.js. Wind CF from 0.5° mean speed is indicative only — a real site needs a met campaign or Global Wind Atlas microdata.</div>`;
 }
@@ -382,8 +448,12 @@ async function lookupParcel(pt){
 }
 
 (async function(){
-  const [cellsR, regR] = await Promise.all([fetch("data/cells.json"), fetch("data/regions.json")]);
+  const V = "?v=3";
+  const [cellsR, regR, farmR, dcR] = await Promise.all([
+    fetch("data/cells.json"+V), fetch("data/regions.json"+V),
+    fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
   DATA = await cellsR.json(); REGIONS = await regR.json();
+  FARMS = await farmR.json(); DCJSON = await dcR.json();
   DATA.cells.forEach((c,i)=> byKey.set(key(c[F.LAT], c[F.LON]), i));
 
   map = L.map("map", {zoomControl:true, maxZoom:19}).setView([40.2, -3.6], 6);
@@ -399,9 +469,10 @@ async function lookupParcel(pt){
     layers:"Catastro", format:"image/png", transparent:true, minZoom:13, maxZoom:19, attribution:"© DG Catastro"});
 
   canvasLayer = new CellLayer(); map.addLayer(canvasLayer);
-  for(const d of DATA.dcs){
-    L.circleMarker([d[1], d[2]], {radius:5, color:"#fff", weight:1.5, fillColor:"#e05d5d", fillOpacity:0.9})
-      .bindTooltip(`<b>${d[0]}</b><br>${d[3]}`).addTo(map);
+  for(const d of DCJSON){
+    L.circleMarker([d.lat, d.lon], {radius: d.src==="osm" ? 3.5 : 5.5, color:"#fff", weight:1.2,
+        fillColor: DC_COLORS[d.status] || "#e05d5d", fillOpacity:0.95})
+      .bindTooltip(`<b>${d.name}</b><br><i>${d.status}</i> · ${d.note}`).addTo(map);
   }
   map.on("click", e => {
     const lat = Math.floor(e.latlng.lat/0.1)*0.1+0.05, lon = Math.floor(e.latlng.lng/0.1)*0.1+0.05;
@@ -409,4 +480,5 @@ async function lookupParcel(pt){
     if(i !== undefined) select(i, e.latlng);
   });
   buildUI();
+  restoreHash();
 })();
