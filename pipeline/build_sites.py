@@ -31,8 +31,7 @@ print(f"solar farms: {len(farms)} ({n_tag} capacity-tagged), {round(sum(f[2] for
 
 # ---- datacenters ----
 CURATED = [  # name, lat, lon, status, note (sources: PROGRESS.md research log)
-    ["Madrid colo ring", 40.45, -3.62, "operating", "National colo hub (Alcobendas-San Blas-Getafe)"],
-    ["Barcelona colo", 41.39, 2.16, "operating", "Colo market"],
+    # (Madrid/Barcelona aggregate markers removed in v3.2 — individual DCM facilities cover them)
     ["AWS El Burgo de Ebro", 41.55, -0.72, "operating", "AWS Aragon region; PIGA expansion approved 2026, ~30 buildings planned"],
     ["AWS Villanueva de Gallego", 41.77, -0.82, "operating", "AWS Aragon region AZ"],
     ["AWS Huesca", 42.14, -0.41, "operating", "AWS Aragon region AZ"],
@@ -62,6 +61,38 @@ CURATED = [  # name, lat, lon, status, note (sources: PROGRESS.md research log)
     ["Box2bit AXIS South (Recas)", 40.06, -3.99, "land", "134,000 m2 site, half of AXIS project"],
 ]
 dcs = [dict(name=n, lat=la, lon=lo, status=s, note=nt, src="research") for n,la,lo,s,nt in CURATED]
+
+# datacentermap.com facilities (harvested via browser session 2026-07-09, exact coords).
+# Curated entries keep their researched status but adopt DCM's exact coordinates when matched.
+MATCH = {  # curated name -> distinctive fragment of the DCM name
+    "Tillion Aragon (Azora)": "Tillion Aragon", "ACS La Puebla de Alfinden": "ACS La Puebla",
+    "Green IT Aragon (SAMCA)": "Green IT Arag", "DayOne Aragon Escatron": "DayOne Aragon",
+    "Vantage Zaragoza": "Vantage - Zaragoza", "Microsoft La Muela": "Microsoft La Muela",
+    "Microsoft Villamayor de Gallego": "Microsoft Villamayor", "Microsoft Zaragoza": "Microsoft Zaragoza",
+    "AWS El Burgo de Ebro": "El Burgo de Ebro", "AWS Villanueva de Gallego": "Villanueva de G",
+    "AWS La Puebla de Hijar": "La Puebla de H", "Merlin Arasur (Alava)": "Arasur Campus",
+}
+try:
+    dcm = json.load(open("data/dcm_facilities.json"))
+    consumed = set()
+    for d in dcs:
+        frag = MATCH.get(d["name"])
+        if not frag: continue
+        for i, (nm, co, la, lo, ct) in enumerate(dcm):
+            if frag in nm:
+                d["lat"], d["lon"] = la, lo
+                consumed.add(i)
+                break
+    added = 0
+    for i, (nm, co, la, lo, ct) in enumerate(dcm):
+        if i in consumed: continue
+        if any(abs(d["lat"]-la) < 0.005 and abs(d["lon"]-lo) < 0.006 for d in dcs): continue
+        dcs.append(dict(name=nm[:60], lat=la, lon=lo, status="operating",
+                        note=f"{co} · {ct} (datacentermap listing; status unverified)", src="dcm"))
+        added += 1
+    print("DCM facilities merged:", added)
+except FileNotFoundError:
+    print("no data/dcm_facilities.json")
 try:
     osm = json.load(open("data/osm_dc.json"))["elements"]
     added = 0

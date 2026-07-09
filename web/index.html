@@ -78,11 +78,15 @@
   <div class="wrow"><input type="checkbox" id="ov_cat"><label for="ov_cat">Catastro parcels <span style="color:var(--dim)">(zoom ≥ 13)</span></label></div>
   <div class="wrow"><input type="checkbox" id="ov_cells" checked><label for="ov_cells">Model grid</label></div>
   <div class="wrow"><input type="checkbox" id="ov_pv" checked><label for="ov_pv">Existing solar farms <span style="color:#43d9f5">●</span> <span style="color:var(--dim)">(3,215 · OSM)</span></label></div>
-  <div class="legend" style="margin-top:2px">Datacenters:
-    <span style="color:#e05d5d">●</span> operating
-    <span style="color:#ff9f43">●</span> construction
-    <span style="color:#ffe95e">●</span> announced
-    <span style="color:#b388ff">●</span> land</div>
+  <div class="legend" style="margin-top:4px">Datacenters (toggle):</div>
+  <div class="legend" style="gap:10px">
+    <label style="cursor:pointer"><input type="checkbox" class="dcst" value="operating" checked style="accent-color:#e05d5d"> <span style="color:#e05d5d">●</span> operating</label>
+    <label style="cursor:pointer"><input type="checkbox" class="dcst" value="construction" checked style="accent-color:#ff9f43"> <span style="color:#ff9f43">●</span> constr.</label>
+  </div>
+  <div class="legend" style="gap:10px">
+    <label style="cursor:pointer"><input type="checkbox" class="dcst" value="announced" checked style="accent-color:#ffe95e"> <span style="color:#ffe95e">●</span> announced</label>
+    <label style="cursor:pointer"><input type="checkbox" class="dcst" value="land" checked style="accent-color:#b388ff"> <span style="color:#b388ff">●</span> land</label>
+  </div>
 
   <h2>Reality check</h2>
   <canvas id="scatter" width="300" height="130" style="width:100%;background:var(--panel2);border-radius:6px"></canvas>
@@ -96,10 +100,10 @@
 <div id="map"></div>
 <div id="detail"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="data/cells.js?v=4"></script>
-<script src="data/regions.js?v=4"></script>
-<script src="data/solar_farms.js?v=4"></script>
-<script src="data/datacenters.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="data/cells.js?v=5"></script>
+<script src="data/regions.js?v=5"></script>
+<script src="data/solar_farms.js?v=5"></script>
+<script src="data/datacenters.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

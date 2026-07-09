@@ -451,7 +451,7 @@ async function lookupParcel(pt){
   if(window.__CELLS){  // data shipped as script files -> works from file:// with no server
     DATA = window.__CELLS; REGIONS = window.__REGIONS; FARMS = window.__FARMS; DCJSON = window.__DCS;
   } else {
-    const V = "?v=4";
+    const V = "?v=5";
     const [cellsR, regR, farmR, dcR] = await Promise.all([
       fetch("data/cells.json"+V), fetch("data/regions.json"+V),
       fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
@@ -473,11 +473,17 @@ async function lookupParcel(pt){
     layers:"Catastro", format:"image/png", transparent:true, minZoom:13, maxZoom:19, attribution:"© DG Catastro"});
 
   canvasLayer = new CellLayer(); map.addLayer(canvasLayer);
+  const dcGroups = {};
   for(const d of DCJSON){
-    L.circleMarker([d.lat, d.lon], {radius: d.src==="osm" ? 3.5 : 5.5, color:"#fff", weight:1.2,
+    const g = dcGroups[d.status] || (dcGroups[d.status] = L.layerGroup().addTo(map));
+    L.circleMarker([d.lat, d.lon], {radius: d.src==="research" ? 5.5 : 3.5, color:"#fff", weight:1.2,
         fillColor: DC_COLORS[d.status] || "#e05d5d", fillOpacity:0.95})
-      .bindTooltip(`<b>${d.name}</b><br><i>${d.status}</i> · ${d.note}`).addTo(map);
+      .bindTooltip(`<b>${d.name}</b><br><i>${d.status}</i> · ${d.note}`).addTo(g);
   }
+  document.querySelectorAll(".dcst").forEach(cb => cb.onchange = () => {
+    const g = dcGroups[cb.value];
+    if(g) cb.checked ? map.addLayer(g) : map.removeLayer(g);
+  });
   map.on("click", e => {
     const lat = Math.floor(e.latlng.lat/0.1)*0.1+0.05, lon = Math.floor(e.latlng.lng/0.1)*0.1+0.05;
     const i = byKey.get(key(lat,lon));

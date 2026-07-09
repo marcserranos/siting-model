@@ -90,6 +90,14 @@ Feedback: map existing solar farms (CV model proposed — declined, see below), 
   - Proyecto Altamira (Stoneshield Capital PE, Villaescusa, Cantabria) — PE land-accumulation behavior already visible.
 - To refresh from datacentermap later: browser session (not curl/WebFetch — hard 429), market pages at /spain/<market>/, remaining unread markets incl. Madrid 69, Barcelona 30, Valencia 11, Bilbao 10, Málaga 7.
 
+## v3.2 (2026-07-09, session 4 cont. — full datacentermap harvest + status toggles)
+- **Full DCM harvest via in-page JS** (not page text): every market page embeds a GeoJSON `mapdata.dcs` in `__NEXT_DATA__` with exact coords + name/operator/capacitytype. Extractor accumulated results in sessionStorage across navigations; exfiltrated via blob download to ~/Downloads (tool outputs truncate at ~1KB — slices also work).
+- **DCM page-view limit hit after ~20 pages** ("Page View Limit Reached" → /research/limited/). Got 13 markets = 157 facilities (Madrid 74, Barcelona 30, Valencia 11, Zaragoza 17, Bilbao 8, Málaga 7, Murcia 3, Sevilla 3, + small). Missing ~25 small-market facilities (alicante, cadiz, palma, granada, guadalajara, lleida, pamplona, badajoz, caceres, ciudad-real, a-coruna, girona, albacete, soria, donostia, merida, oviedo, huesca, menorca, ibiza, mao) — quota presumably resets; rerun the same playbook later.
+- Interesting: DCM's map omits markers for projects without exact sites (QTS Calatorao, Box2bit×2, EdgeMode, AWS San Mateo) — exactly the ones our curated list covers with town coords. Complementary by construction.
+- `data/dcm_facilities.json` (157 rows) → build_sites.py merges: curated entries keep researched status + adopt DCM exact coords (MATCH dict); rest added as status "operating (unverified)". Madrid/Barcelona aggregate markers removed. **Total now 110 DC sites** (88 operating / 18 announced / 1 construction / 3 land).
+- **UI: per-status toggle checkboxes** (operating/construction/announced/land) via L.layerGroup per status. Cache bump ?v=5.
+- **Baxtel: BLOCKED on Chrome extension domain permission** ("Navigation to this domain is not allowed"). Marc needs to allow baxtel.com in the Claude Chrome extension's site access settings; then repeat the playbook — likely richer (their taxonomy: Operational/Construction/Planned/Prospective/Expansion/Land Bank/In Doubt/Withdrawn/Decommissioned).
+
 ## Open items for the week (not blockers)
 - Sweep the remaining low-confidence CCAA dossiers (esp. Castilla y León, Andalucía) with the same primary-source treatment as Aragón/Extremadura.
 - Catastro parcel deep-dive on top-5 cells (Sede Electrónica manual; INSPIRE ATOM endpoints were unreachable from this network — retry from Spanish IP?).
