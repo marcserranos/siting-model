@@ -38,7 +38,7 @@ CURATED = [  # name, lat, lon, status, note (sources: PROGRESS.md research log)
     ["Microsoft La Muela", 41.58, -1.19, "announced", "Region MSFT PIGA, initial approval"],
     ["Microsoft Villamayor de Gallego", 41.69, -0.77, "announced", "Region MSFT PIGA"],
     ["Microsoft Zaragoza", 41.63, -0.95, "announced", "Region MSFT PIGA, 3rd campus"],
-    ["Meta Talavera de la Reina", 39.96, -4.83, "construction", "Hyperscale; national water-controversy reference case"],
+    ["Meta Talavera de la Reina", 39.95554, -4.94694, "construction", "Hyperscale; national water-controversy reference case"],
     ["Merlin Edged Navalmoral", 39.90, -5.54, "announced", "PREMIA declared, EUR 1.6B, up to 1 GW IT"],
     ["Merlin Edged Valdecaballeros", 39.24, -5.19, "announced", "Twin campus, up to 1 GW IT"],
     ["Merlin Arasur (Alava)", 42.73, -2.87, "operating", "Operating/expanding"],
@@ -93,6 +93,40 @@ try:
     print("DCM facilities merged:", added)
 except FileNotFoundError:
     print("no data/dcm_facilities.json")
+
+# baxtel.com lifecycle stages (public Mapbox tileset, see fetch_baxtel.py).
+# Baxtel's stage wins over DCM's "unverified operating" and refines curated statuses.
+STAGE_MAP = {"operational": "operating", "construction": "construction",
+             "planned": "announced", "landbank": "land"}
+try:
+    bax = json.load(open("data/baxtel_sites.json"))
+    up = add = 0
+    for b in bax:
+        if b["region"] in ("lisbon", "portugal", "marseille") or b["stage"] not in STAGE_MAP:
+            continue
+        status = STAGE_MAP[b["stage"]]
+        toks = {w.lower() for w in (b["company"] or "").split() if len(w) > 3}
+        hit = None
+        for d in dcs:
+            if d["src"] == "baxtel": continue  # baxtel features are distinct sites by construction
+            # wide fuzzy match only against curated entries (their coords are town-level)
+            if d["src"] == "research" and abs(d["lat"]-b["lat"]) < 0.06 and abs(d["lon"]-b["lon"]) < 0.075 \
+               and (toks & {w.lower() for w in (d["name"]+" "+d["note"]).split()}):
+                hit = d; break
+            if abs(d["lat"]-b["lat"]) < 0.004 and abs(d["lon"]-b["lon"]) < 0.005:
+                hit = d; break
+        if hit:
+            if hit["status"] != status and hit["src"] != "research":
+                hit["status"] = status; up += 1
+            if "baxtel" not in hit["note"]:
+                hit["note"] += f" · baxtel: {b['stage']}"
+        else:
+            add += 1
+            dcs.append(dict(name=(b["name"] or "?")[:60], lat=b["lat"], lon=b["lon"], status=status,
+                            note=f"{b['company'] or ''} · {b['ctype'] or ''} (baxtel: {b['stage']})", src="baxtel"))
+    print(f"baxtel merged: {add} added, {up} statuses upgraded")
+except FileNotFoundError:
+    print("no data/baxtel_sites.json")
 try:
     osm = json.load(open("data/osm_dc.json"))["elements"]
     added = 0

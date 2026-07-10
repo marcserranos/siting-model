@@ -451,7 +451,7 @@ async function lookupParcel(pt){
   if(window.__CELLS){  // data shipped as script files -> works from file:// with no server
     DATA = window.__CELLS; REGIONS = window.__REGIONS; FARMS = window.__FARMS; DCJSON = window.__DCS;
   } else {
-    const V = "?v=5";
+    const V = "?v=6";
     const [cellsR, regR, farmR, dcR] = await Promise.all([
       fetch("data/cells.json"+V), fetch("data/regions.json"+V),
       fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
