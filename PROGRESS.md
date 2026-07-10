@@ -98,6 +98,14 @@ Feedback: map existing solar farms (CV model proposed — declined, see below), 
 - **UI: per-status toggle checkboxes** (operating/construction/announced/land) via L.layerGroup per status. Cache bump ?v=5.
 - **Baxtel: BLOCKED on Chrome extension domain permission** ("Navigation to this domain is not allowed"). Marc needs to allow baxtel.com in the Claude Chrome extension's site access settings; then repeat the playbook — likely richer (their taxonomy: Operational/Construction/Planned/Prospective/Expansion/Land Bank/In Doubt/Withdrawn/Decommissioned).
 
+## v3.4 (2026-07-10, session 5 — baxtel lifecycle stages landed)
+- **Browser tools stayed domain-blocked for baxtel** (extension allowlist; not prompt injection — the deny predates any page load). Workaround: Marc pasted two snippets in DevTools himself (needed to type `allow pasting` first — Chrome self-XSS guard). Snippet 1: resource URL dump. Snippet 2: API discovery.
+- **Discovery result:** baxtel's own `/api/sites/*` is 401 ("not publicly available yet") — left alone. But the map is fed by a **public Mapbox tileset `ericbell.baxtel_sites`** (token embedded in page for all visitors), vector PBF, fields incl. site_name, company_name, primary_stage, region_slug. `pipeline/fetch_baxtel.py` fetches z8 tiles over Spain (~88 tiles, cached in data/baxtel_tiles/), decodes with mapbox-vector-tile, calibrated against known Equinix coords.
+- **249 features decoded** (incl. Lisbon/Marseille, filtered): stages operational 133 / planned 69 / construction 35 / landbank 11 / withdrawn 1.
+- **Merge order & rules (learned the hard way):** curated (keeps researched status+notes, wide 6km token match) > baxtel (never merges baxtel-vs-baxtel — nearby features are distinct sub-projects, e.g. EdgeMode Vianos/GDC Alcaraz/Alcaraz Expansion within 4 km) > DCM (tight 400m match; gets status upgraded by baxtel). Meta Talavera curated coords were 10 km off (town center vs real campus) — fixed from baxtel.
+- **Final: 200 DC sites — 115 operating / 59 announced / 19 construction / 7 land.** Land-bank highlights: **Fotowatio/FRV "Lusitanus" (Extremadura — a solar developer land-banking a DC site = the BYOP thesis as market behavior)**, EdgeMode Vianos (near the model's Albacete whitespace pick), Microsoft Alcalá, AWS Villanueva 2, Box2bit ×2, Iridium PTR. Also surfaced: EdgeMode has ~9 planned "GDC" sites across Castilla-La Mancha/Andalucía; Substrate AI planned at Talavera.
+- Committed dd9910b. Refresh later: `fetch_baxtel.py` (tiles re-fetch after clearing cache dir) + `build_sites.py` + `pack_web.py` + bump ?v=.
+
 ## Open items for the week (not blockers)
 - Sweep the remaining low-confidence CCAA dossiers (esp. Castilla y León, Andalucía) with the same primary-source treatment as Aragón/Extremadura.
 - Catastro parcel deep-dive on top-5 cells (Sede Electrónica manual; INSPIRE ATOM endpoints were unreachable from this network — retry from Spanish IP?).
