@@ -72,8 +72,35 @@ def db():
       source TEXT, date TEXT, title TEXT, event_type TEXT, mw REAL, eur_m REAL,
       summary TEXT, confidence REAL);
     CREATE TABLE IF NOT EXISTS seen(url TEXT PRIMARY KEY, ts TEXT, relevant INTEGER);
+    CREATE TABLE IF NOT EXISTS changes(id INTEGER PRIMARY KEY, project_id INTEGER, field TEXT,
+      old TEXT, new TEXT, news_url TEXT, ts TEXT);
     """)
+    try: con.execute("ALTER TABLE projects ADD COLUMN investment_eur_m REAL")
+    except sqlite3.OperationalError: pass
     return con
+
+def log_change(con, pid, field, old, new, url):
+    con.execute("INSERT INTO changes(project_id,field,old,new,news_url,ts) VALUES(?,?,?,?,?,?)",
+                (pid, field, str(old) if old is not None else None, str(new), url, date.today().isoformat()))
+
+def update_fields(con, pid, it, url):
+    """Propagate newly-learned facts (MW, investment, company) into the project card, with provenance."""
+    changed = []
+    row = con.execute("SELECT mw, investment_eur_m, company, region FROM projects WHERE id=?", (pid,)).fetchone()
+    cur_mw, cur_inv, cur_comp, cur_reg = row
+    conf = it.get("confidence", 0)
+    if it.get("mw") and (cur_mw is None or (abs(it["mw"] - cur_mw) / max(cur_mw, 1) > 0.15 and conf >= 0.7)):
+        con.execute("UPDATE projects SET mw=?, updated=? WHERE id=?", (it["mw"], date.today().isoformat(), pid))
+        log_change(con, pid, "mw", cur_mw, it["mw"], url); changed.append(f"mw {cur_mw}→{it['mw']}")
+    if it.get("eur_m") and (cur_inv is None or (abs(it["eur_m"] - cur_inv) / max(cur_inv, 1) > 0.15 and conf >= 0.7)):
+        con.execute("UPDATE projects SET investment_eur_m=?, updated=? WHERE id=?", (it["eur_m"], date.today().isoformat(), pid))
+        log_change(con, pid, "investment_eur_m", cur_inv, it["eur_m"], url); changed.append(f"inv {cur_inv}→{it['eur_m']}M€")
+    if it.get("company") and not cur_comp:
+        con.execute("UPDATE projects SET company=? WHERE id=?", (it["company"], pid))
+        log_change(con, pid, "company", None, it["company"], url)
+    if it.get("province") and not cur_reg:
+        con.execute("UPDATE projects SET region=? WHERE id=?", (it["province"], pid))
+    return changed
 
 STATUS_RANK = {"announced": 1, "land": 1, "permit": 2, "construction": 3, "operational": 4, "operating": 4}
 EVENT_TO_STATUS = {"land_purchase": "land", "announcement": "announced", "permit": "announced",
@@ -194,6 +221,9 @@ def reconcile(con, results):
                                EVENT_TO_STATUS.get(it.get("event_type")) or "announced", it.get("mw"),
                                it.get("province"), "news", date.today().isoformat(), it.get("municipality")))
             pid = cur.lastrowid
+            log_change(con, pid, "created", None, it.get("event_type"), a["url"])
+            if it.get("eur_m"):
+                con.execute("UPDATE projects SET investment_eur_m=? WHERE id=?", (it["eur_m"], pid))
             new_p.append(f"{it.get('project_name')} ({it.get('company')}, {it.get('municipality')})")
         else:
             ns = EVENT_TO_STATUS.get(it.get("event_type"))
@@ -202,7 +232,10 @@ def reconcile(con, results):
                 if ns == "cancelled" or STATUS_RANK.get(ns, 0) > STATUS_RANK.get(old, 0):
                     con.execute("UPDATE projects SET status=?, updated=? WHERE id=?",
                                 (ns, date.today().isoformat(), pid))
+                    log_change(con, pid, "status", old, ns, a["url"])
                     changed.append(f"{it.get('project_name')}: {old} → {ns}")
+            fc = update_fields(con, pid, it, a["url"])
+            if fc: changed.append(f"{it.get('project_name')}: " + ", ".join(fc))
         try:
             con.execute("INSERT OR IGNORE INTO news(project_id,url,source,date,title,event_type,mw,eur_m,summary,confidence) "
                         "VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -217,16 +250,27 @@ def reconcile(con, results):
 # ---------------- publish ----------------
 def export(con):
     projects = []
-    for pid, name, comp, lat, lon, status, mw, region, src, review, updated, notes in \
-            con.execute("SELECT * FROM projects WHERE lat IS NOT NULL"):
+    for pid, name, comp, lat, lon, status, mw, inv, region, src, review, updated in con.execute(
+            "SELECT id,name,company,lat,lon,status,mw,investment_eur_m,region,src,review,updated "
+            "FROM projects WHERE lat IS NOT NULL"):
         news = [{"date": d, "title": t, "url": u, "source": s, "event": ev, "summary": sm}
                 for (d, t, u, s, ev, sm) in con.execute(
                     "SELECT date,title,url,source,event_type,summary FROM news WHERE project_id=? "
                     "ORDER BY date DESC LIMIT 12", (pid,))]
+        chg = [{"ts": ts, "field": f, "old": o, "new": n, "url": u}
+               for (ts, f, o, n, u) in con.execute(
+                   "SELECT ts,field,old,new,news_url FROM changes WHERE project_id=? "
+                   "ORDER BY id DESC LIMIT 8", (pid,))]
         projects.append({"name": name, "company": comp, "lat": lat, "lon": lon, "status": status,
-                         "mw": mw, "region": region, "src": src, "review": review,
-                         "updated": updated, "news": news})
-    return {"generated": datetime.utcnow().isoformat(timespec="seconds") + "Z", "projects": projects}
+                         "mw": mw, "inv": inv, "region": region, "src": src, "review": review,
+                         "updated": updated, "news": news, "changes": chg})
+    feed = [{"date": d, "title": t, "url": u, "source": s, "event": ev, "summary": sm, "project": pn}
+            for (d, t, u, s, ev, sm, pn) in con.execute(
+                "SELECT n.date,n.title,n.url,n.source,n.event_type,n.summary,p.name "
+                "FROM news n LEFT JOIN projects p ON p.id=n.project_id "
+                "ORDER BY n.id DESC LIMIT 120")]
+    return {"generated": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "repo": E("GH_REPO"), "projects": projects, "news_feed": feed}
 
 def push_github(payload):
     tok, repo = E("GH_TOKEN"), E("GH_REPO")

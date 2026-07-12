@@ -37,7 +37,13 @@ crontab -e                                            # add the line below
 ```
 ```
 15 12 * * * cd /root/dc_watch && .venv/bin/python dc_watch.py >> cron.log 2>&1
+*/2 * * * * /root/dc_watch/trigger_poll.sh
 ```
+(`chmod +x trigger_poll.sh` after copying. The second line is the **manual-trigger poller**:
+the viewer's "⚡ Trigger ingestion now" button writes `web/data/trigger.json` to the repo
+using a token you paste once into the browser (stored in localStorage, nowhere else);
+the VM notices within ≤2 min, runs the pipeline, publishes, and the page auto-reloads
+when fresh data lands. Perfect for live demos.)
 
 ### D. Publish the viewer (on your Mac, once)
 ```bash

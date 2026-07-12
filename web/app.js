@@ -507,11 +507,77 @@ Assumptions: PV ${A.pv} M€/MWp · BESS ${A.bess} M€/MWh · WACC ${A.wacc}% �
   });
 }
 
+const EVENT_ICON = {land_purchase:"🟪", announcement:"📣", permit:"📋", construction_start:"🏗",
+                    operational:"🟢", expansion:"➕", deal:"🤝", cancelled:"❌"};
+
+function showNewsFeed(){
+  const feed = (LIVE && LIVE.news_feed) || [];
+  const el = document.getElementById("detail");
+  el.style.display = "block";
+  el.innerHTML = `
+    <span class="close" onclick="document.getElementById('detail').style.display='none'">×</span>
+    <h1>📰 Intelligence feed</h1>
+    <div class="sub">${feed.length} articles ingested · knowledge base generated ${LIVE ? LIVE.generated : "—"}</div>
+    <button id="trigbtn" style="width:100%;padding:7px;background:var(--panel2);color:var(--accent);border:1px solid var(--line);border-radius:6px;cursor:pointer;font-size:11.5px">⚡ Trigger ingestion now (runs on the VM, ~2-4 min)</button>
+    <div id="trigstat" style="font-size:10.5px;color:var(--dim);margin:4px 0 10px"></div>
+    ${feed.map(n => `
+      <div class="dossier" style="margin-bottom:6px">
+        <div style="font-size:10.5px;color:var(--dim)">${EVENT_ICON[n.event] || "•"} ${n.date || ""} · ${n.source || ""}${n.project ? ` · <b style="color:var(--accent)">${n.project}</b>` : ""}</div>
+        <a href="${n.url}" target="_blank" style="font-size:12px">${n.title}</a>
+        ${n.summary ? `<div style="font-size:11px;color:var(--dim);margin-top:3px">${n.summary}</div>` : ""}
+      </div>`).join("") || `<div style="font-size:11.5px;color:var(--dim)">Nothing ingested yet — the pipeline populates this daily at 12:15 UTC.</div>`}`;
+  document.getElementById("trigbtn").onclick = triggerIngestion;
+}
+
+async function triggerIngestion(){
+  const stat = t => document.getElementById("trigstat").textContent = t;
+  let tok = localStorage.getItem("gh_pat");
+  if(!tok){
+    tok = prompt("GitHub fine-grained token for spain-dc-map (stored only in THIS browser's localStorage):");
+    if(!tok) return;
+    localStorage.setItem("gh_pat", tok.trim());
+  }
+  const repo = (LIVE && LIVE.repo) || localStorage.getItem("gh_repo") ||
+    localStorage.setItem("gh_repo", prompt("Repo (owner/name):") || "") || localStorage.getItem("gh_repo");
+  if(!repo) return;
+  const api = `https://api.github.com/repos/${repo}/contents/web/data/trigger.json`;
+  const h = {"Authorization": `Bearer ${localStorage.getItem("gh_pat")}`, "Accept": "application/vnd.github+json"};
+  try{
+    stat("writing trigger…");
+    let sha;
+    const g = await fetch(api, {headers: h});
+    if(g.ok) sha = (await g.json()).sha;
+    const body = {message: "manual ingestion trigger",
+      content: btoa(JSON.stringify({requested: new Date().toISOString()}))};
+    if(sha) body.sha = sha;
+    const r = await fetch(api, {method: "PUT", headers: h, body: JSON.stringify(body)});
+    if(!r.ok){ stat(`GitHub error ${r.status} — token wrong or lacks Contents write`); if(r.status===401||r.status===403) localStorage.removeItem("gh_pat"); return; }
+    stat("trigger written ✓ — VM polls every 2 min, then ingests (~2-4 min). Watching for fresh data…");
+    const before = LIVE ? LIVE.generated : "";
+    let tries = 0;
+    const iv = setInterval(async () => {
+      tries++;
+      try{
+        const lr = await fetch("data/dc_live.json?ts=" + Date.now());
+        if(lr.ok){
+          const fresh = await lr.json();
+          if(fresh.generated !== before){
+            clearInterval(iv);
+            stat("✅ fresh data published — reloading…");
+            setTimeout(()=> location.reload(), 1200);
+            return;
+          }
+        }
+      }catch(e){}
+      stat(`waiting for the VM… ${tries*20}s (poll cycle ≤2 min + run ~2 min)`);
+      if(tries > 24){ clearInterval(iv); stat("no fresh data after 8 min — check cron.log on the VM"); }
+    }, 20000);
+  }catch(e){ stat("error: " + e); }
+}
+
 function showDC(d, ci){
   const p = d.live || {};
   const news = p.news || [];
-  const EVENT_ICON = {land_purchase:"🟪", announcement:"📣", permit:"📋", construction_start:"🏗",
-                      operational:"🟢", expansion:"➕", deal:"🤝", cancelled:"❌"};
   const el = document.getElementById("detail");
   el.style.display = "block";
   el.innerHTML = `
@@ -521,9 +587,12 @@ function showDC(d, ci){
     <div style="margin:6px 0">
       <span class="badge" style="background:${DC_COLORS[d.status]}22;color:${DC_COLORS[d.status]}">${d.status}</span>
       ${p.mw ? `<span class="badge b-mid">${p.mw} MW</span>` : ""}
+      ${p.inv ? `<span class="badge b-mid">${p.inv.toLocaleString()} M€</span>` : ""}
       ${p.updated ? `<span style="font-size:10.5px;color:var(--dim)"> updated ${p.updated}</span>` : ""}
       ${p.review ? `<span class="badge b-bad">unreviewed — auto-created from news</span>` : ""}
     </div>
+    ${(p.changes && p.changes.length) ? `<h2>Change log <span style="color:var(--dim);text-transform:none">(field · when · evidence)</span></h2>` +
+      p.changes.map(c => `<div style="font-size:11px;color:var(--dim);margin:3px 0">${c.ts} · <b style="color:var(--text)">${c.field}</b>: ${c.old ?? "—"} → <b style="color:var(--accent)">${c.new}</b>${c.url ? ` · <a href="${c.url}" target="_blank" style="color:var(--accent)">source ↗</a>` : ""}</div>`).join("") : ""}
     ${ci !== undefined && scores[ci] >= 0 ? `<div style="font-size:12px;margin:6px 0">Model score at this location: <b style="color:var(--accent)">${scores[ci].toFixed(0)}/100</b>
       · <a href="#" style="color:var(--accent)" onclick="select(${ci});return false">open cell analysis →</a></div>` : ""}
     <h2>News trail ${LIVE ? `<span style="color:var(--dim);text-transform:none">(live KB · ${LIVE.generated ? LIVE.generated.slice(0,10) : ""})</span>` : ""}</h2>
@@ -577,7 +646,7 @@ async function lookupParcel(pt){
   if(window.__CELLS){  // data shipped as script files -> works from file:// with no server
     DATA = window.__CELLS; REGIONS = window.__REGIONS; FARMS = window.__FARMS; DCJSON = window.__DCS; SUBS = window.__SUBS;
   } else {
-    const V = "?v=8";
+    const V = "?v=9";
     const [cellsR, regR, farmR, dcR] = await Promise.all([
       fetch("data/cells.json"+V), fetch("data/regions.json"+V),
       fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
@@ -617,6 +686,10 @@ async function lookupParcel(pt){
                        note: (p.company||"") + " · via news watch" + (p.review ? " (unreviewed)" : ""), src: "live", live: p});
     }
     console.log("live KB:", LIVE.projects.length, "projects, generated", LIVE.generated);
+    const fl = document.getElementById("feedline");
+    fl.style.display = "flex";
+    fl.textContent = `📰 News feed (${(LIVE.news_feed||[]).length}) · KB updated ${LIVE.generated.slice(0,10)}`;
+    fl.onclick = showNewsFeed;
   }
   const dcGroups = {};
   for(const d of dcAll){
