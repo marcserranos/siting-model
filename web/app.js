@@ -71,7 +71,7 @@ const LAYERS = [
    fmt:c=>c[F.DSUB]+" km to 220/400 kV substation", norm:c=>1-clamp(c[F.DSUB]/80)},
 ];
 
-let DATA, REGIONS, FARMS, DCJSON, SUBS, map, canvasLayer, baseDark, baseSat, catWMS;
+let DATA, REGIONS, FARMS, DCJSON, SUBS, LIVE = null, map, canvasLayer, baseDark, baseSat, catWMS;
 let state = {mode:"gw", w:{}, on:{}, gates:{}, view:"score", showCells:true, showFarms:true, showSubs:false};
 let scores = [], pass = [], clusterHa = [], capex = [], capexDomain = [8,16],
     lcoe = [], lcoeDomain = [60,140], byKey = new Map();
@@ -507,6 +507,36 @@ Assumptions: PV ${A.pv} M€/MWp · BESS ${A.bess} M€/MWh · WACC ${A.wacc}% �
   });
 }
 
+function showDC(d, ci){
+  const p = d.live || {};
+  const news = p.news || [];
+  const EVENT_ICON = {land_purchase:"🟪", announcement:"📣", permit:"📋", construction_start:"🏗",
+                      operational:"🟢", expansion:"➕", deal:"🤝", cancelled:"❌"};
+  const el = document.getElementById("detail");
+  el.style.display = "block";
+  el.innerHTML = `
+    <span class="close" onclick="document.getElementById('detail').style.display='none'">×</span>
+    <h1>${d.name}</h1>
+    <div class="sub">${(p.company || d.note || "").slice(0,90)}</div>
+    <div style="margin:6px 0">
+      <span class="badge" style="background:${DC_COLORS[d.status]}22;color:${DC_COLORS[d.status]}">${d.status}</span>
+      ${p.mw ? `<span class="badge b-mid">${p.mw} MW</span>` : ""}
+      ${p.updated ? `<span style="font-size:10.5px;color:var(--dim)"> updated ${p.updated}</span>` : ""}
+      ${p.review ? `<span class="badge b-bad">unreviewed — auto-created from news</span>` : ""}
+    </div>
+    ${ci !== undefined && scores[ci] >= 0 ? `<div style="font-size:12px;margin:6px 0">Model score at this location: <b style="color:var(--accent)">${scores[ci].toFixed(0)}/100</b>
+      · <a href="#" style="color:var(--accent)" onclick="select(${ci});return false">open cell analysis →</a></div>` : ""}
+    <h2>News trail ${LIVE ? `<span style="color:var(--dim);text-transform:none">(live KB · ${LIVE.generated ? LIVE.generated.slice(0,10) : ""})</span>` : ""}</h2>
+    ${news.length ? news.map(n => `
+      <div class="dossier" style="margin-bottom:6px">
+        <div style="font-size:10.5px;color:var(--dim)">${EVENT_ICON[n.event] || "•"} ${n.date || ""} · ${n.source || ""}</div>
+        <a href="${n.url}" target="_blank" style="font-size:12px">${n.title}</a>
+        ${n.summary ? `<div style="font-size:11px;color:var(--dim);margin-top:3px">${n.summary}</div>` : ""}
+      </div>`).join("")
+      : `<div style="font-size:11.5px;color:var(--dim)">No tracked news yet. ${LIVE ? "The daily watch adds articles as they appear." : "Live knowledge base not loaded — runs once the Hermes pipeline publishes dc_live.json."}</div>`}
+    <div class="footnote">Baked sources: primary research + datacentermap + baxtel (see PROGRESS.md). Live layer: daily RSS→DeepSeek pipeline on Marc's Hermes VM.</div>`;
+}
+
 async function lookupParcel(pt){
   const el = () => document.getElementById("parcel");
   const gmaps = `https://www.google.com/maps/@${pt.lat.toFixed(5)},${pt.lng.toFixed(5)},2500m/data=!3m1!1e3`;
@@ -547,7 +577,7 @@ async function lookupParcel(pt){
   if(window.__CELLS){  // data shipped as script files -> works from file:// with no server
     DATA = window.__CELLS; REGIONS = window.__REGIONS; FARMS = window.__FARMS; DCJSON = window.__DCS; SUBS = window.__SUBS;
   } else {
-    const V = "?v=7";
+    const V = "?v=8";
     const [cellsR, regR, farmR, dcR] = await Promise.all([
       fetch("data/cells.json"+V), fetch("data/regions.json"+V),
       fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
@@ -569,14 +599,35 @@ async function lookupParcel(pt){
     layers:"Catastro", format:"image/png", transparent:true, minZoom:13, maxZoom:19, attribution:"© DG Catastro"});
 
   canvasLayer = new CellLayer(); map.addLayer(canvasLayer);
+  // merge live knowledge base (Hermes dc_watch pipeline) into baked markers
+  try{
+    const lr = await fetch("data/dc_live.json?ts=" + Date.now());
+    if(lr.ok) LIVE = await lr.json();
+  }catch(e){}
+  const toks = s => new Set((s||"").toLowerCase().split(/[^a-záéíóúñü0-9]+/).filter(w=>w.length>3));
+  const dcAll = DCJSON.map(d=>({...d}));
+  if(LIVE && LIVE.projects){
+    for(const p of LIVE.projects){
+      if(p.lat === null) continue;
+      const pt = toks(p.name + " " + (p.company||""));
+      const hit = dcAll.find(d => Math.abs(d.lat-p.lat) < 0.03 && Math.abs(d.lon-p.lon) < 0.04 &&
+        [...toks(d.name + " " + d.note)].some(w => pt.has(w)));
+      if(hit){ hit.live = p; if(p.status && DC_COLORS[p.status]) hit.status = p.status; }
+      else dcAll.push({name: p.name, lat: p.lat, lon: p.lon, status: DC_COLORS[p.status] ? p.status : "announced",
+                       note: (p.company||"") + " · via news watch" + (p.review ? " (unreviewed)" : ""), src: "live", live: p});
+    }
+    console.log("live KB:", LIVE.projects.length, "projects, generated", LIVE.generated);
+  }
   const dcGroups = {};
-  for(const d of DCJSON){
+  for(const d of dcAll){
     const g = dcGroups[d.status] || (dcGroups[d.status] = L.layerGroup().addTo(map));
     const ci = byKey.get(key(Math.floor(d.lat/0.1)*0.1+0.05, Math.floor(d.lon/0.1)*0.1+0.05));
     L.circleMarker([d.lat, d.lon], {radius: d.src==="research" ? 5.5 : 3.5, color:"#fff", weight:1.2,
         fillColor: DC_COLORS[d.status] || "#e05d5d", fillOpacity:0.95})
       .bindTooltip(() => `<b>${d.name}</b><br><i>${d.status}</i> · ${d.note}` +
+        (d.live ? `<br>📰 ${ (d.live.news||[]).length } news · click for dossier` : "") +
         (ci !== undefined && scores[ci] >= 0 ? `<br>model score here: <b>${scores[ci].toFixed(0)}</b>` : ""))
+      .on("click", ev => { L.DomEvent.stopPropagation(ev); showDC(d, ci); })
       .addTo(g);
   }
   document.querySelectorAll(".dcst").forEach(cb => cb.onchange = () => {

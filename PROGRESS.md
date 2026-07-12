@@ -119,6 +119,15 @@ Method: role-played each outreach persona (PE principal, developer, gas-BYOP ope
 - Bug fixed during verify: stale `COST.` refs after rename to `A` broke showDetail silently (empty panel, no console error surfaced).
 - OUTREACH.md written (18-target tiered cohort) — NOT committed yet per Marc's interrupt; sitting in working tree.
 
+## v5 (2026-07-12, session 7 — Hermes live-intelligence pipeline)
+Goal: daily autonomous crawl of Spanish DC news on Marc's Hermes VM (Hetzner, DeepSeek V4 Flash) feeding a living knowledge base merged into the viewer.
+- **`hermes/dc_watch.py`**: RSS (3 Google News queries + DCD ES) → keyword prefilter + seen-URL dedupe → article text via trafilatura (+ googlenewsdecoder for Google News redirect wrapping — verified live: full Submer article decoded) → DeepSeek batched JSON extraction (8/call, ≤40 articles/day, headline+RSS-summary fallback for paywalls) → SQLite reconcile (fuzzy match ≥0.6 on company/municipality/name; status only upgrades, cancelled always wins; unmatched → auto-created project flagged review=1, geocoded via Nominatim) → export dc_live.json → **GitHub Contents API push** (no git on VM) → **Telegram digest** (bot API direct — independent of Hermes gateway).
+- **Cost design:** cron 12:15 UTC (outside DeepSeek peak 01–04/06–10 UTC ×2 pricing); ~40 articles×1k tokens/day ≈ well under $1/mo on the $5 budget.
+- **Viewer v5:** fetches `data/dc_live.json` at boot (graceful if absent), merges into markers (proximity+token match; live status wins), DC markers now **clickable → project dossier panel**: status/MW/updated badges, chronological news trail w/ event icons + links, "open cell analysis" cross-link. Verified with fixture (Meta Talavera news trail rendered; unmatched project appeared as unreviewed land marker), fixture removed, graceful-degrade verified. v8 cache bump.
+- **Publishing architecture:** ONE new public GitHub repo `spain-dc-map` = GitHub Pages (viewer) + the VM's daily data push. Research repo stays local/private (OUTREACH/PROGRESS not public). `deploy_pages.sh` rsyncs web/ to a local clone & pushes.
+- **Live smoke test found today's news**: Submer €1B AI DC at Ercros plant Flix (Tarragona!), Azora/Tillion €2.356B confirmed — the KB would have gained 2-3 projects on day one.
+- **Marc's setup steps** (~15 min): `hermes/README.md` — GitHub repo+Pages+fine-grained PAT, @BotFather bot + chat_id, scp + venv + .env + seed + manual run + crontab.
+
 ## Open items for the week (not blockers)
 - Sweep the remaining low-confidence CCAA dossiers (esp. Castilla y León, Andalucía) with the same primary-source treatment as Aragón/Extremadura.
 - Catastro parcel deep-dive on top-5 cells (Sede Electrónica manual; INSPIRE ATOM endpoints were unreachable from this network — retry from Spanish IP?).
