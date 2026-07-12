@@ -53,6 +53,10 @@ try:
         pv_mw[k] = pv_mw.get(k, 0) + mw
 except FileNotFoundError:
     pass
+try:
+    SUBS = json.load(open("data/substations.json"))  # [[lat,lon,kv,name],...] 220/400kV, OSM
+except FileNotFoundError:
+    SUBS = []
 
 cells, skipped = [], 0
 for cid, g in grid.items():
@@ -76,6 +80,7 @@ for cid, g in grid.items():
         float(isa2[cid]["eol_dev"] or 0), int(isa2[cid]["patch_ha"]),        # 18-19 wind dev frac, patch ha
         float(power[cid]["ws50"]), int(power[cid]["precip_mm_yr"]),          # 20-21 wind m/s, precip mm/yr
         round(pv_mw.get((lat, lon), 0)),                                     # 22 existing PV MW in cell (OSM)
+        round(min((hav(lat, lon, s[0], s[1]) for s in SUBS), default=999)),  # 23 km to nearest 220/400kV sub
     ])
 
 out = {
@@ -83,7 +88,7 @@ out = {
         "built": "2026-07-06", "step_deg": 0.1,
         "fields": ["lat","lon","ccaa","pv_yield_kwh_kwp","elev_m","relief_m","f_valid",
                    "f_maxima","f_muyalta","f_alta","f_moderada","f_baja","d_city_km","city_idx","d_dc_km","dc_idx",
-                   "isa_val_pv","isa_val_eol","eol_dev_frac","patch_ha","ws50_ms","precip_mm_yr","existing_pv_mw"],
+                   "isa_val_pv","isa_val_eol","eol_dev_frac","patch_ha","ws50_ms","precip_mm_yr","existing_pv_mw","d_sub_km"],
         "cell_area_km2_approx": 94, "isa_source": "MITECO Zonificación FTV 2023 (25m, sampled 200m)",
         "pv_source": "PVGIS v5.3 SARAH3, 1kWp fixed optimal tilt, 14% losses",
         "elev_source": "Open-Meteo / Copernicus GLO-90, 4x4 subgrid"

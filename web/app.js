@@ -4,26 +4,41 @@
 "use strict";
 
 const F = {LAT:0, LON:1, CCAA:2, EY:3, ELEV:4, RELIEF:5, FVALID:6, FMAX:7, FMUYALTA:8, FALTA:9, FMOD:10, FBAJA:11,
-           DCITY:12, CITYI:13, DDC:14, DCI:15, ISAV:16, EOLV:17, EOLDEV:18, PATCH:19, WS:20, PRECIP:21, PVMW:22};
+           DCITY:12, CITYI:13, DDC:14, DCI:15, ISAV:16, EOLV:17, EOLDEV:18, PATCH:19, WS:20, PRECIP:21, PVMW:22, DSUB:23};
 const DC_COLORS = {operating:"#e05d5d", construction:"#ff9f43", announced:"#ffe95e", land:"#b388ff"};
 const CELL_HA = 9400;
 const PUE = 1.15, HA_PER_MWP = 2, HA_PER_WIND_MW = 5, BESS_H = {solar:10, hybrid:7};
-// Screening-grade unit costs, M EUR (2026): PV incl. BOS; wind onshore; 4h-class BESS; backup engines; meseta agri land.
-const COST = {pv:0.55, wind:1.15, bess:0.20, backup:0.45, land_ha:0.012};
+// Editable screening assumptions (Assumptions panel writes here; refresh() recomputes everything).
+const A = {
+  pv: 0.55,        // M EUR / MWp installed (incl. BOS)
+  bess: 0.20,      // M EUR / MWh (4h-class)
+  wind: 1.15,      // M EUR / MW onshore
+  backup: 0.45,    // M EUR / MW load (engines / fuel cells capex)
+  wacc: 8,         // % discount rate
+  years: 20,       // amortization horizon
+  om: 1.8,         // % of capex / year O&M
+  gas_e: 68,       // EUR / MWh_e fuel+variable cost of gas generation (~35 EUR/MWh_th at ~50% eff)
+  gas_capex: 0.95, // M EUR / MW, pure gas-BYOP plant benchmark
+  landx: 1.0,      // multiplier on regional land prices
+};
+// Approx. rural (secano) land EUR/ha by CCAA — MAPA Encuesta de Precios de la Tierra ballparks, screening-grade.
+const LAND_HA = {"01":12000,"02":8000,"03":12000,"04":60000,"06":18000,"07":6500,"08":7000,"09":25000,
+                 "10":20000,"11":5000,"12":15000,"13":40000,"14":15000,"15":15000,"16":30000,"17":15000};
+const CRF = () => { const w = A.wacc/100, n = A.years; return w*Math.pow(1+w,n)/(Math.pow(1+w,n)-1); };
 
 const MODES = {
   gw:   {label:"1 GW solar", it:1000, mix:{pv:0.9, wind:0, backup:0.1},
          note:"Hyperscale campus, PV+BESS only. Land need computed from each cell's own yield; aggregates neighboring cells (~30 km).",
-         w:{solar:90, env:80, terrain:70, reg:85, city:-30, dc:20, wind:0, eolv:0, rain:0, pvx:0}, gates:{relief:300, dev:0.35}},
+         w:{solar:90, env:80, terrain:70, reg:85, city:-30, dc:20, wind:0, eolv:0, rain:0, pvx:0, grid:0}, gates:{relief:300, dev:0.35}},
   gwh:  {label:"1 GW hybrid", it:1000, mix:{pv:0.55, wind:0.35, backup:0.1},
          note:"PV + on-site wind. Wind firms winter/night supply and cuts battery + land; needs wind resource AND wind permitting headroom.",
-         w:{solar:70, env:70, terrain:60, reg:85, city:-30, dc:20, wind:60, eolv:50, rain:0, pvx:0}, gates:{relief:300, dev:0.35}},
+         w:{solar:70, env:70, terrain:60, reg:85, city:-30, dc:20, wind:60, eolv:50, rain:0, pvx:0, grid:0}, gates:{relief:300, dev:0.35}},
   mw100:{label:"100 MW", it:100, mix:{pv:0.9, wind:0, backup:0.1},
          note:"Large single-site campus; fits inside one cell's developable land in most of the meseta.",
-         w:{solar:80, env:70, terrain:60, reg:70, city:20, dc:30, wind:0, eolv:0, rain:0, pvx:0}, gates:{relief:350, dev:0.15}},
+         w:{solar:80, env:70, terrain:60, reg:70, city:20, dc:30, wind:0, eolv:0, rain:0, pvx:0, grid:0}, gates:{relief:350, dev:0.15}},
   edge: {label:"10 MW edge", it:10, mix:{pv:0.9, wind:0, backup:0.1},
          note:"Regional/edge site; proximity to labor and fiber flips to a positive.",
-         w:{solar:50, env:30, terrain:30, reg:40, city:80, dc:10, wind:0, eolv:0, rain:0, pvx:0}, gates:{relief:500, dev:0.05}},
+         w:{solar:50, env:30, terrain:30, reg:40, city:80, dc:10, wind:0, eolv:0, rain:0, pvx:0, grid:0}, gates:{relief:500, dev:0.05}},
 };
 
 const clamp = v => Math.max(0, Math.min(1, v));
@@ -52,22 +67,32 @@ const LAYERS = [
    fmt:c=>c[F.DDC]+" km to "+DATA.dcs[c[F.DCI]][0], norm:c=>1-clamp(c[F.DDC]/250)},
   {k:"pvx", label:"Existing PV build-out", dual:true, hint:"OSM-mapped solar in cell: follow proven zones (+) or hunt whitespace (−)",
    fmt:c=>c[F.PVMW]+" MW mapped in cell", norm:c=>clamp(c[F.PVMW]/150)},
+  {k:"grid", label:"HV grid optionality", dual:true, hint:"Distance to nearest 220/400 kV substation (OSM). BYOP needs no tie — but surplus export / plan-B tie is optionality. Default off: the thesis stays off-grid",
+   fmt:c=>c[F.DSUB]+" km to 220/400 kV substation", norm:c=>1-clamp(c[F.DSUB]/80)},
 ];
 
-let DATA, REGIONS, FARMS, DCJSON, map, canvasLayer, baseDark, baseSat, catWMS;
-let state = {mode:"gw", w:{}, on:{}, gates:{}, view:"score", showCells:true, showFarms:true};
-let scores = [], pass = [], clusterHa = [], capex = [], capexDomain = [8,16], byKey = new Map();
-let selected = -1, clickPt = null;
+let DATA, REGIONS, FARMS, DCJSON, SUBS, map, canvasLayer, baseDark, baseSat, catWMS;
+let state = {mode:"gw", w:{}, on:{}, gates:{}, view:"score", showCells:true, showFarms:true, showSubs:false};
+let scores = [], pass = [], clusterHa = [], capex = [], capexDomain = [8,16],
+    lcoe = [], lcoeDomain = [60,140], byKey = new Map();
+let selected = -1, clickPt = null, muni = "";
 
 function sizing(mode, c){
-  const it = mode.it, mix = mode.mix, load = it * PUE, E = load * 8760;
+  const it = mode.it, mix = mode.mix, load = it * PUE, E = load * 8760;   // MWh/yr delivered
   const mwp = E * mix.pv / c[F.EY];
   const cf = windCF(c[F.WS]);
   const windMW = mix.wind > 0 && cf > 0.05 ? E * mix.wind / (8760 * cf) : 0;
   const bess = load * (mix.wind > 0 ? BESS_H.hybrid : BESS_H.solar);
+  const landEurHa = (LAND_HA[c[F.CCAA]] || 12000) * A.landx;
   const ha = mwp * HA_PER_MWP + windMW * HA_PER_WIND_MW + it * 0.03;
-  const capexM = mwp*COST.pv + windMW*COST.wind + bess*COST.bess + load*COST.backup + ha*COST.land_ha;
-  return {load, mwp, windMW, cf, bess, ha, capexM, perMW: capexM/it};
+  const capexM = mwp*A.pv + windMW*A.wind + bess*A.bess + load*A.backup + ha*landEurHa/1e6;
+  // LCOE of delivered energy: annualized capex + O&M + backup-share fuel
+  const backupShare = Math.max(0, 1 - mix.pv - mix.wind);
+  const annM = capexM * (CRF() + A.om/100);
+  const lcoe = (annM * 1e6 + backupShare * E * A.gas_e) / E;
+  // pure gas-BYOP benchmark at same load: gas capex + full-energy fuel (location-invariant)
+  const gasLcoe = (load * A.gas_capex * (CRF() + A.om/100) * 1e6 + E * A.gas_e) / E;
+  return {load, mwp, windMW, cf, bess, ha, capexM, perMW: capexM/it, lcoe, gasLcoe, landEurHa};
 }
 
 function computeScores(){
@@ -97,9 +122,18 @@ function computeScores(){
     }
     return 100 * s / sumW;
   });
-  capex = DATA.cells.map((c,i)=> pass[i] ? sizing(m, c).perMW : NaN);
-  const vals = capex.filter(v=>!isNaN(v)).sort((a,b)=>a-b);
-  if(vals.length) capexDomain = [vals[Math.floor(vals.length*0.02)], vals[Math.floor(vals.length*0.98)]];
+  capex = []; lcoe = [];
+  for(let i = 0; i < DATA.cells.length; i++){
+    if(!pass[i]){ capex.push(NaN); lcoe.push(NaN); continue; }
+    const sz = sizing(m, DATA.cells[i]);
+    capex.push(sz.perMW); lcoe.push(sz.lcoe);
+  }
+  const dom = arr => {
+    const v = arr.filter(x=>!isNaN(x)).sort((a,b)=>a-b);
+    return v.length ? [v[Math.floor(v.length*0.02)], v[Math.floor(v.length*0.98)]] : null;
+  };
+  capexDomain = dom(capex) || capexDomain;
+  lcoeDomain = dom(lcoe) || lcoeDomain;
 }
 
 function neighbors(i){
@@ -147,10 +181,11 @@ const CellLayer = L.Layer.extend({
         const s = scores[i];
         if(s === undefined || s < 0){ fill = "#3a3f4a"; alpha = 0.35; }
         else fill = viridis((s-35)/50);
-      } else if(state.view === "capex"){
-        const v = capex[i];
+      } else if(state.view === "capex" || state.view === "lcoe"){
+        const v = state.view === "capex" ? capex[i] : lcoe[i];
+        const d = state.view === "capex" ? capexDomain : lcoeDomain;
         if(isNaN(v)){ fill = "#3a3f4a"; alpha = 0.35; }
-        else fill = viridis(1 - (v-capexDomain[0])/(capexDomain[1]-capexDomain[0]));  // yellow = cheap
+        else fill = viridis(1 - (v-d[0])/(d[1]-d[0]));  // yellow = cheap
       } else {
         fill = viridis(layerView.norm(c)); alpha = 0.7;
       }
@@ -162,6 +197,15 @@ const CellLayer = L.Layer.extend({
       if(i === selected){
         ctx.globalAlpha = 1; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
         ctx.strokeRect(p1.x, p1.y, p2.x-p1.x, p2.y-p1.y);
+      }
+    }
+    if(state.showSubs && SUBS){
+      ctx.globalAlpha = 0.9;
+      for(const s of SUBS){
+        const p = m.latLngToContainerPoint([s[0], s[1]]);
+        if(p.x < -4 || p.x > size.x+4 || p.y < -4 || p.y > size.y+4) continue;
+        ctx.fillStyle = s[2] === 400 ? "#ffffff" : "#9aa3b2";
+        ctx.fillRect(p.x-2.5, p.y-2.5, 5, 5);
       }
     }
     if(state.showFarms && FARMS){
@@ -185,14 +229,28 @@ function buildUI(){
     modes.appendChild(b);
   }
   const vs = document.getElementById("viewsel");
-  vs.innerHTML = `<option value="score">Composite score</option><option value="capex">Power capex €/MW IT</option>` +
+  vs.innerHTML = `<option value="score">Composite score</option><option value="lcoe">LCOE €/MWh delivered</option><option value="capex">Power capex €/MW IT</option>` +
     LAYERS.map(L2=>`<option value="${L2.k}">${L2.label}</option>`).join("");
   vs.onchange = () => {
     state.view = vs.value;
-    document.getElementById("lg0").textContent = vs.value==="capex" ? "expensive" : "low";
-    document.getElementById("lg1").textContent = vs.value==="capex" ? "cheap" : "high";
+    const cost = vs.value === "capex" || vs.value === "lcoe";
+    document.getElementById("lg0").textContent = cost ? "expensive" : "low";
+    document.getElementById("lg1").textContent = cost ? "cheap" : "high";
     canvasLayer.redraw();
   };
+  // assumptions panel
+  const AMETA = [["pv","PV M€/MWp"],["bess","BESS M€/MWh"],["wind","Wind M€/MW"],["backup","Backup M€/MW"],
+                 ["wacc","WACC %"],["years","Years"],["om","O&M %/yr"],["gas_e","Gas €/MWh_e"],
+                 ["gas_capex","Gas M€/MW"],["landx","Land ×"]];
+  document.getElementById("assume").innerHTML = AMETA.map(([k,l]) =>
+    `<label style="display:flex;flex-direction:column;font-size:10px;color:var(--dim)">${l}
+     <input type="number" step="any" data-k="${k}" value="${A[k]}"
+       style="background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:3px 5px;width:100%"></label>`).join("");
+  document.querySelectorAll("#assume input").forEach(inp => inp.onchange = () => {
+    const v = parseFloat(inp.value);
+    if(!isNaN(v)){ A[inp.dataset.k] = v; refresh(); }
+  });
+  document.getElementById("ov_subs").onchange = e => { state.showSubs = e.target.checked; canvasLayer.redraw(); };
   document.getElementById("bm_sat").onchange = e => {
     if(e.target.checked){ map.removeLayer(baseDark); map.addLayer(baseSat); }
     else { map.removeLayer(baseSat); map.addLayer(baseDark); }
@@ -300,9 +358,18 @@ function drawScatter(){
   const sorted = [...pts].sort((a,b)=>b[0]-a[0]);
   const q = Math.max(1, Math.floor(sorted.length/5));
   const topMW = sorted.slice(0, q).reduce((a,p)=>a+p[1], 0);
+  // do announced/land DC projects sit in higher-scoring cells than the operating fleet?
+  const dcScore = st => {
+    const v = (DCJSON||[]).filter(d=>st.includes(d.status))
+      .map(d=>scores[byKey.get(key(Math.floor(d.lat/0.1)*0.1+0.05, Math.floor(d.lon/0.1)*0.1+0.05))])
+      .filter(s=>s !== undefined && s >= 0);
+    return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : null;
+  };
+  const sOp = dcScore(["operating"]), sNew = dcScore(["announced","construction","land"]);
   document.getElementById("valstat").innerHTML =
     `Top-20% scored cells hold <b>${totMW ? Math.round(100*topMW/totMW) : 0}%</b> of the ${(totMW/1000).toFixed(1)} GW of OSM-mapped PV in passing cells — ` +
-    `x: composite score, y: existing MW (log). Bright dots = cells with built PV.`;
+    `x: composite score, y: existing MW (log).` +
+    (sOp !== null && sNew !== null ? `<br>DC pipeline check: operating sites average score <b>${sOp}</b>; announced/construction/land average <b>${sNew}</b> — the new wave ${sNew>sOp?"is moving toward":"is not yet moving toward"} the model's map.` : "");
 }
 
 function renderTop(){
@@ -336,6 +403,7 @@ function dist(a,b){
 
 function select(i, pt){
   selected = i;
+  muni = "";
   clickPt = pt || {lat: DATA.cells[i][F.LAT], lng: DATA.cells[i][F.LON]};
   canvasLayer.redraw(); showDetail(i);
   lookupParcel(clickPt);
@@ -359,9 +427,11 @@ function showDetail(i){
   el.style.display = "block";
   el.innerHTML = `
     <span class="close" onclick="document.getElementById('detail').style.display='none';selected=-1;canvasLayer.redraw()">×</span>
-    <h1>${DATA.cities[c[F.CITYI]][0]} area <span style="color:var(--dim);font-weight:400">· ${R.name}</span></h1>
+    <h1><span id="muni">${muni || DATA.cities[c[F.CITYI]][0] + " area"}</span> <span style="color:var(--dim);font-weight:400">· ${R.name}</span></h1>
     <div class="sub">${c[F.LAT].toFixed(2)}, ${c[F.LON].toFixed(2)} · elev ${c[F.ELEV]} m · cell ~94 km²</div>
-    <div style="font-size:26px;font-weight:700;color:var(--accent)">${scores[i]>=0?scores[i].toFixed(0):"—"}<span style="font-size:12px;color:var(--dim)"> /100 composite ${scores[i]<0?"(fails gates)":""}</span></div>
+    <div style="font-size:26px;font-weight:700;color:var(--accent)">${scores[i]>=0?scores[i].toFixed(0):"—"}<span style="font-size:12px;color:var(--dim)"> /100 composite ${scores[i]<0?"(fails gates)":""}</span>
+      <span style="float:right;font-size:15px">${!isNaN(lcoe[i])?lcoe[i].toFixed(0)+" <span style='font-size:10px;color:var(--dim)'>€/MWh</span>":""}</span></div>
+    <button id="briefbtn" style="margin-top:6px;width:100%;padding:6px;background:var(--panel2);color:var(--accent);border:1px solid var(--line);border-radius:6px;cursor:pointer;font-size:11.5px">📋 Copy site brief (for emails)</button>
 
     <h2>Parcel at clicked point <span style="color:var(--dim);text-transform:none">(Catastro, live)</span></h2>
     <div class="dossier" id="parcel">Looking up referencia catastral…</div>
@@ -383,12 +453,14 @@ function showDetail(i){
 
     <h2>Power capex (screening)</h2>
     <table class="kv">
-      <tr><td>PV ${Math.round(sz.mwp).toLocaleString()} MWp × ${COST.pv} M€</td><td>${Math.round(sz.mwp*COST.pv).toLocaleString()} M€</td></tr>
-      ${sz.windMW>0?`<tr><td>Wind ${Math.round(sz.windMW).toLocaleString()} MW × ${COST.wind} M€</td><td>${Math.round(sz.windMW*COST.wind).toLocaleString()} M€</td></tr>`:""}
-      <tr><td>BESS ${Math.round(sz.bess).toLocaleString()} MWh × ${COST.bess} M€</td><td>${Math.round(sz.bess*COST.bess).toLocaleString()} M€</td></tr>
-      <tr><td>Backup ${Math.round(sz.load).toLocaleString()} MW × ${COST.backup} M€</td><td>${Math.round(sz.load*COST.backup).toLocaleString()} M€</td></tr>
-      <tr><td>Land ${Math.round(sz.ha).toLocaleString()} ha × ${COST.land_ha*1000} k€</td><td>${Math.round(sz.ha*COST.land_ha).toLocaleString()} M€</td></tr>
+      <tr><td>PV ${Math.round(sz.mwp).toLocaleString()} MWp × ${A.pv} M€</td><td>${Math.round(sz.mwp*A.pv).toLocaleString()} M€</td></tr>
+      ${sz.windMW>0?`<tr><td>Wind ${Math.round(sz.windMW).toLocaleString()} MW × ${A.wind} M€</td><td>${Math.round(sz.windMW*A.wind).toLocaleString()} M€</td></tr>`:""}
+      <tr><td>BESS ${Math.round(sz.bess).toLocaleString()} MWh × ${A.bess} M€</td><td>${Math.round(sz.bess*A.bess).toLocaleString()} M€</td></tr>
+      <tr><td>Backup ${Math.round(sz.load).toLocaleString()} MW × ${A.backup} M€</td><td>${Math.round(sz.load*A.backup).toLocaleString()} M€</td></tr>
+      <tr><td>Land ${Math.round(sz.ha).toLocaleString()} ha × ${(sz.landEurHa/1000).toFixed(1)} k€/ha <span style="font-size:10px">(${R.name} approx., editable ×)</span></td><td>${Math.round(sz.ha*sz.landEurHa/1e6).toLocaleString()} M€</td></tr>
       <tr><td><b>Total power system</b> (DC building excluded — site-invariant)</td><td><b>${Math.round(sz.capexM).toLocaleString()} M€ · ${sz.perMW.toFixed(1)} M€/MW IT</b></td></tr>
+      <tr><td><b>LCOE delivered</b> (WACC ${A.wacc}%, ${A.years} yr, O&M ${A.om}%)</td><td><b>${sz.lcoe.toFixed(0)} €/MWh</b></td></tr>
+      <tr><td>Pure gas-BYOP benchmark at this load (EdgeMode-style)</td><td>${sz.gasLcoe.toFixed(0)} €/MWh ${sz.lcoe < sz.gasLcoe ? "— <b style='color:var(--good)'>solar wins here</b>" : "— <b style='color:var(--bad)'>gas wins here</b>"}</td></tr>
     </table>
 
     <h2>Environmental sensitivity (MITECO 25 m)</h2>
@@ -410,8 +482,29 @@ function showDetail(i){
       <tr><td>Nearest city ≥100k</td><td>${DATA.cities[c[F.CITYI]][0]} · ${c[F.DCITY]} km</td></tr>
       <tr><td>Wind 50 m / precip</td><td>${c[F.WS]} m/s · ${c[F.PRECIP]} mm/yr</td></tr>
       <tr><td>Existing PV mapped in cell (OSM)</td><td>${c[F.PVMW]>0 ? "<b>"+c[F.PVMW]+" MW</b> — proven zone" : "none — whitespace"}</td></tr>
+      <tr><td>Nearest 220/400 kV substation (plan-B tie / export)</td><td>${c[F.DSUB]} km</td></tr>
     </table>
-    <div class="footnote">Cost constants are screening-grade 2026 figures; edit COST in app.js. Wind CF from 0.5° mean speed is indicative only — a real site needs a met campaign or Global Wind Atlas microdata.</div>`;
+    <div class="footnote">All economics are screening-grade and live-editable in the Assumptions panel. Wind CF from 0.5° mean speed is indicative only — a real site needs a met campaign or Global Wind Atlas microdata.</div>`;
+  document.getElementById("briefbtn").onclick = () => copyBrief(i);
+}
+
+function copyBrief(i){
+  const c = DATA.cells[i], R = REGIONS[c[F.CCAA]], m = MODES[state.mode], sz = sizing(m, c);
+  const txt = `SITE BRIEF — Spain BYOP Siting Model
+${muni || DATA.cities[c[F.CITYI]][0] + " area"} (${R.name}) · ${c[F.LAT].toFixed(3)}, ${c[F.LON].toFixed(3)}
+Composite score: ${scores[i]>=0?scores[i].toFixed(0):"n/a"}/100 (mode: ${m.label})
+Solar: ${c[F.EY]} kWh/kWp·yr (PVGIS SARAH3) · Terrain relief: ${c[F.RELIEF]} m · Elev: ${c[F.ELEV]} m
+Env. sensitivity (MITECO): ${c[F.ISAV].toFixed(1)}/10 continuous · ${Math.round(devFrac(c)*100)}% developable (Baja+Moderada)
+Regulatory: ${R.score}/100 (${R.confidence} confidence) — ${R.instrument}
+Build math (${m.label}): ${Math.round(sz.mwp).toLocaleString()} MWp PV${sz.windMW?` + ${Math.round(sz.windMW)} MW wind`:""} + ${Math.round(sz.bess).toLocaleString()} MWh BESS · ${Math.round(sz.ha).toLocaleString()} ha needed vs ${Math.round(m.it>=1000?(clusterHa[i]||devHa(c)):devHa(c)).toLocaleString()} ha developable
+Economics: ${Math.round(sz.capexM).toLocaleString()} M€ capex (${sz.perMW.toFixed(1)} M€/MW IT) · LCOE ${sz.lcoe.toFixed(0)} €/MWh vs gas-BYOP ${sz.gasLcoe.toFixed(0)} €/MWh
+Context: ${c[F.DSUB]} km to 220/400kV · ${c[F.DCITY]} km to ${DATA.cities[c[F.CITYI]][0]} · ${c[F.DDC]} km to ${DATA.dcs[c[F.DCI]][0]} · ${c[F.PVMW]} MW PV already in cell
+Assumptions: PV ${A.pv} M€/MWp · BESS ${A.bess} M€/MWh · WACC ${A.wacc}% · ${A.years} yr · land ${(sz.landEurHa/1000).toFixed(1)} k€/ha
+— generated by Marc Serrano's Spain BYOP siting model (sources: PVGIS, MITECO Zonificación 2023, Copernicus, OSM, primary regulatory research)`;
+  navigator.clipboard.writeText(txt).then(() => {
+    const b = document.getElementById("briefbtn");
+    b.textContent = "✓ Copied"; setTimeout(()=> b.textContent = "📋 Copy site brief (for emails)", 1500);
+  });
 }
 
 async function lookupParcel(pt){
@@ -423,6 +516,9 @@ async function lookupParcel(pt){
     const co = j.Consulta_RCCOORResult?.coordenadas?.coord?.[0];
     if(!co?.pc){ if(el()) el().innerHTML = `No parcel at this exact point (unregistered/public land). <a href="${gmaps}" target="_blank">Satellite view ↗</a>`; return; }
     const rc = co.pc.pc1 + co.pc.pc2;
+    // municipality from ldt, e.g. "Polígono 38 Parcela 72 QUEJIGAR. ALCAZAR DE SAN JUAN (CIUDAD REAL)"
+    const mm = (co.ldt || "").match(/\.\s*([^.]+\([^)]+\))\s*$/);
+    if(mm){ muni = mm[1].trim(); const el2 = document.getElementById("muni"); if(el2) el2.textContent = muni; }
     let html = `<b>${rc}</b><br>${co.ldt || ""}`;
     try{
       const r2 = await fetch(`https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejero.svc/json/Consulta_DNPRC?RefCat=${rc}`);
@@ -449,9 +545,9 @@ async function lookupParcel(pt){
 
 (async function(){
   if(window.__CELLS){  // data shipped as script files -> works from file:// with no server
-    DATA = window.__CELLS; REGIONS = window.__REGIONS; FARMS = window.__FARMS; DCJSON = window.__DCS;
+    DATA = window.__CELLS; REGIONS = window.__REGIONS; FARMS = window.__FARMS; DCJSON = window.__DCS; SUBS = window.__SUBS;
   } else {
-    const V = "?v=6";
+    const V = "?v=7";
     const [cellsR, regR, farmR, dcR] = await Promise.all([
       fetch("data/cells.json"+V), fetch("data/regions.json"+V),
       fetch("data/solar_farms.json"+V), fetch("data/datacenters.json"+V)]);
@@ -476,9 +572,12 @@ async function lookupParcel(pt){
   const dcGroups = {};
   for(const d of DCJSON){
     const g = dcGroups[d.status] || (dcGroups[d.status] = L.layerGroup().addTo(map));
+    const ci = byKey.get(key(Math.floor(d.lat/0.1)*0.1+0.05, Math.floor(d.lon/0.1)*0.1+0.05));
     L.circleMarker([d.lat, d.lon], {radius: d.src==="research" ? 5.5 : 3.5, color:"#fff", weight:1.2,
         fillColor: DC_COLORS[d.status] || "#e05d5d", fillOpacity:0.95})
-      .bindTooltip(`<b>${d.name}</b><br><i>${d.status}</i> · ${d.note}`).addTo(g);
+      .bindTooltip(() => `<b>${d.name}</b><br><i>${d.status}</i> · ${d.note}` +
+        (ci !== undefined && scores[ci] >= 0 ? `<br>model score here: <b>${scores[ci].toFixed(0)}</b>` : ""))
+      .addTo(g);
   }
   document.querySelectorAll(".dcst").forEach(cb => cb.onchange = () => {
     const g = dcGroups[cb.value];

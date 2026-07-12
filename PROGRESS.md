@@ -106,6 +106,19 @@ Feedback: map existing solar farms (CV model proposed — declined, see below), 
 - **Final: 200 DC sites — 115 operating / 59 announced / 19 construction / 7 land.** Land-bank highlights: **Fotowatio/FRV "Lusitanus" (Extremadura — a solar developer land-banking a DC site = the BYOP thesis as market behavior)**, EdgeMode Vianos (near the model's Albacete whitespace pick), Microsoft Alcalá, AWS Villanueva 2, Box2bit ×2, Iridium PTR. Also surfaced: EdgeMode has ~9 planned "GDC" sites across Castilla-La Mancha/Andalucía; Substrate AI planned at Talavera.
 - Committed dd9910b. Refresh later: `fetch_baxtel.py` (tiles re-fetch after clearing cache dir) + `build_sites.py` + `pack_web.py` + bump ?v=.
 
+## v4 (2026-07-12, session 6 — "if I were the expert" round)
+Method: role-played each outreach persona (PE principal, developer, gas-BYOP operator, listed operator, government office, journalist) and implemented what they'd demand:
+- **LCOE engine** (PE/developer ask): per-cell €/MWh delivered = annualized capex (CRF at editable WACC/years) + O&M + backup-share fuel. New "LCOE" map view (yellow=cheap). Header shows score + LCOE side by side.
+- **Editable assumptions panel** (10 params: PV/BESS/wind/backup capex, WACC, years, O&M, gas fuel €/MWh_e, gas capex, land multiplier) — everything recomputes live incl. gates/ranking. Verified: gas 68→95 €/MWh moves benchmark 81→108; WACC 8→12% moves solar LCOE 78→99.
+- **Gas-BYOP benchmark per cell** (EdgeMode ask answered quantitatively): at defaults, top Aragón cells show solar 78 vs gas 81 €/MWh — solar wins on the best land, narrowly. The map is now a solar-vs-gas breakeven surface.
+- **Regional land prices** (developer ask): per-CCAA secano €/ha ballparks (MAPA Encuesta-style: Extremadura 5k … Madrid 40k), feeding capex/LCOE, scalable via Land×.
+- **HV grid optionality** (recruiter instinct + Pepa persona, without betraying the thesis): 1,031 OSM 220/400 kV substations (336 400kV), per-cell distance (field 23), optional dual-sign layer default 0, map overlay toggle.
+- **DC benchmark** (Merlin ask): model score shown live in every DC tooltip + Reality Check adds pipeline stat — **operating fleet avg score 61 vs announced/construction/land avg 65: the new build wave is measurably moving toward the model's map.**
+- **Municipality names** (government ask): parsed live from Catastro RCCOOR ldt into the site header (e.g. "TORRES DE BARBUES (HUESCA)").
+- **Copy site brief** (outreach ask): one-click clipboard prospectus (score, physics, math, LCOE vs gas, parcel context, assumptions) for pasting into cohort emails.
+- Bug fixed during verify: stale `COST.` refs after rename to `A` broke showDetail silently (empty panel, no console error surfaced).
+- OUTREACH.md written (18-target tiered cohort) — NOT committed yet per Marc's interrupt; sitting in working tree.
+
 ## Open items for the week (not blockers)
 - Sweep the remaining low-confidence CCAA dossiers (esp. Castilla y León, Andalucía) with the same primary-source treatment as Aragón/Extremadura.
 - Catastro parcel deep-dive on top-5 cells (Sede Electrónica manual; INSPIRE ATOM endpoints were unreachable from this network — retry from Spanish IP?).

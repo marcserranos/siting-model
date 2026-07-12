@@ -78,6 +78,7 @@
   <div class="wrow"><input type="checkbox" id="ov_cat"><label for="ov_cat">Catastro parcels <span style="color:var(--dim)">(zoom ≥ 13)</span></label></div>
   <div class="wrow"><input type="checkbox" id="ov_cells" checked><label for="ov_cells">Model grid</label></div>
   <div class="wrow"><input type="checkbox" id="ov_pv" checked><label for="ov_pv">Existing solar farms <span style="color:#43d9f5">●</span> <span style="color:var(--dim)">(3,215 · OSM)</span></label></div>
+  <div class="wrow"><input type="checkbox" id="ov_subs"><label for="ov_subs">220/400 kV substations <span style="color:#fff">■</span> <span style="color:var(--dim)">(1,031 · OSM)</span></label></div>
   <div class="legend" style="margin-top:4px">Datacenters (toggle):</div>
   <div class="legend" style="gap:10px">
     <label style="cursor:pointer"><input type="checkbox" class="dcst" value="operating" checked style="accent-color:#e05d5d"> <span style="color:#e05d5d">●</span> operating</label>
@@ -87,6 +88,12 @@
     <label style="cursor:pointer"><input type="checkbox" class="dcst" value="announced" checked style="accent-color:#ffe95e"> <span style="color:#ffe95e">●</span> announced</label>
     <label style="cursor:pointer"><input type="checkbox" class="dcst" value="land" checked style="accent-color:#b388ff"> <span style="color:#b388ff">●</span> land</label>
   </div>
+
+  <details style="margin-top:14px">
+    <summary style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);cursor:pointer">Assumptions (editable, live)</summary>
+    <div id="assume" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px"></div>
+    <div class="footnote" style="margin-top:6px">Land €/ha defaults are per-CCAA rural (secano) ballparks from MAPA's Encuesta de Precios de la Tierra — approximate; scale with "Land ×". LCOE = annualized capex (CRF) + O&M + backup fuel, over delivered MWh.</div>
+  </details>
 
   <h2>Reality check</h2>
   <canvas id="scatter" width="300" height="130" style="width:100%;background:var(--panel2);border-radius:6px"></canvas>
@@ -100,10 +107,11 @@
 <div id="map"></div>
 <div id="detail"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="data/cells.js?v=6"></script>
-<script src="data/regions.js?v=6"></script>
-<script src="data/solar_farms.js?v=6"></script>
-<script src="data/datacenters.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="data/cells.js?v=7"></script>
+<script src="data/regions.js?v=7"></script>
+<script src="data/solar_farms.js?v=7"></script>
+<script src="data/datacenters.js?v=7"></script>
+<script src="data/substations.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
