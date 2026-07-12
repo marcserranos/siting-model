@@ -128,6 +128,14 @@ Goal: daily autonomous crawl of Spanish DC news on Marc's Hermes VM (Hetzner, De
 - **Live smoke test found today's news**: Submer €1B AI DC at Ercros plant Flix (Tarragona!), Azora/Tillion €2.356B confirmed — the KB would have gained 2-3 projects on day one.
 - **Marc's setup steps** (~15 min): `hermes/README.md` — GitHub repo+Pages+fine-grained PAT, @BotFather bot + chat_id, scp + venv + .env + seed + manual run + crontab.
 
+## v5.1 (2026-07-12, session 7 cont. — dynamic cards, provenance, live demo trigger)
+Marc's asks: field updates from news (MW etc.), traceable cards, a news panel, page-triggered manual ingestion.
+- **Field propagation:** `update_fields()` — MW/investment update project cards (overwrite if empty; if conflicting, only at confidence ≥0.7 and >15% delta); company/region fill-if-null. New `changes` table logs every mutation (field, old→new, source URL, date); `investment_eur_m` column added via migration.
+- **Provenance UI:** dossier shows MW + M€ badges and a **Change log** ("2026-07-12 · mw: — → 300 · source ↗") — every fact on a card traces to the article that set it.
+- **Intelligence feed:** export now includes `news_feed` (last 120 articles w/ project attribution); sidebar "📰 News feed (N) · KB updated <date>" opens a formatted feed panel.
+- **Remote trigger for live demos:** feed panel button writes `web/data/trigger.json` to the repo via GitHub API (fine-grained PAT stored ONLY in Marc's browser localStorage); `trigger_poll.sh` on the VM (cron */2 min, flock-guarded, raw.githubusercontent poll = no API rate usage) detects the timestamp change and runs the pipeline; the page polls dc_live.json every 20s and auto-reloads when `generated` changes. End-to-end demo latency ≤4 min. Firewall stays SSH-only.
+- Verified with fixture (feed panel, trigger button, change log, badges), fixture removed. v9 cache bump. Commit 70c03b9.
+
 ## Open items for the week (not blockers)
 - Sweep the remaining low-confidence CCAA dossiers (esp. Castilla y León, Andalucía) with the same primary-source treatment as Aragón/Extremadura.
 - Catastro parcel deep-dive on top-5 cells (Sede Electrónica manual; INSPIRE ATOM endpoints were unreachable from this network — retry from Spanish IP?).
