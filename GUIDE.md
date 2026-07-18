@@ -141,8 +141,19 @@ Checkboxes that add/remove things on the map:
 - **Model grid** — the colored score squares themselves.
 - **Existing solar farms** — 3,215 real solar farms from OpenStreetMap (cyan dots, sized by capacity).
 - **220/400 kV substations** — 1,031 high-voltage substations (white/gray squares).
+- **📐 BYOP footprint to scale** — see 2.5.1 below.
 - **Datacenter toggles** — four checkboxes to show/hide operating / construction / announced / land-banked datacenters.
 - **📰 News feed** — appears once the live pipeline has published; opens the intelligence feed (Part 9).
+
+### 2.5.1 BYOP footprint to scale (the "how big is this really?" overlay)
+
+Turning this on drops a **draggable, true-to-scale drawing** of the selected project's power plant directly onto the map, over real geography. Drag the amber ✥ handle anywhere — put it over Madrid, over a real solar farm, over your own town — to compare the footprint against things you recognise. It draws three things, all at real geographic size:
+
+- a **blue dashed square** = the total allocated solar land,
+- a small **red square in its corner** = the datacenter buildings themselves (usually a speck — that's the point),
+- (hybrid mode only) a **green square** = the wind area, drawn separately because it's genuinely dual-use (farming continues under the turbines, so that land isn't "lost").
+
+The tooltip on the handle shows the totals and the land-to-building ratio. It **resizes automatically when you change project scale** (10 MW edge → 1 GW), and it reuses the model's exact sizing formulas, so the drawn area always matches the build-math panel. The headline it makes visceral: a 1 GW solar campus needs ~104 km² (about the size of Barcelona) to power buildings covering ~0.3 km² — a **346:1** ratio — and only ~25% of that land is actual panels; the rest is inter-row spacing, roads and setbacks. (Implemented as an isolated overlay in `app.js` — `footGeom` / `drawFoot` / `toggleFoot` — it does not touch the scoring engine.)
 
 ### 2.6 Assumptions panel (editable, live)
 
