@@ -153,8 +153,9 @@ def export_v2(con, repo=None):
     """Build the enriched dc_live.json: each field carries {value, range, confidence, status,
     n_sources} so the UI can show ranges + confidence + provenance, not a bare number."""
     projects = []
-    for eid, name, region, lat, lon, review, updated in con.execute(
-            "SELECT id,canonical_name,region,lat,lon,review,updated_at FROM entities WHERE lat IS NOT NULL"):
+    for eid, name, region, lat, lon, review, updated, src in con.execute(
+            "SELECT id,canonical_name,region,lat,lon,review,updated_at,src FROM entities "
+            "WHERE lat IS NOT NULL"):
         fields = {}
         for attr in TRACKED:
             h = headline(con, eid, attr)
@@ -169,8 +170,16 @@ def export_v2(con, repo=None):
                        "SELECT ts,action,attribute,old,new,source_url,note FROM changelog "
                        "WHERE entity_id=? ORDER BY id DESC LIMIT 10", (eid,))]
         st = fields.get("status", {})
+        # LEGACY MIRROR: the deployed app.js reads flat p.mw / p.inv / p.company. Emit those
+        # alongside fields{} so v2 can go live WITHOUT breaking the current map — the new UI reads
+        # fields{} (value+range+confidence+provenance), the old one keeps working unchanged.
+        def _v(a):
+            f = fields.get(a)
+            return f.get("value") if f else None
         projects.append({"id": eid, "name": name, "lat": lat, "lon": lon, "region": region,
                          "status": st.get("value"), "review": review, "updated": updated,
+                         "company": _v("company"), "mw": _v("mw"), "inv": _v("investment_eur_m"),
+                         "src": src,
                          "fields": fields, "news": news, "changes": changes})
 
     feed = [{"date": d, "title": t, "url": u, "source": s, "tier": tr, "event": ev,
