@@ -14,7 +14,7 @@ import ingest
 import kb
 import resolver
 
-ARTICLES_PER_PROJECT = 5   # how many search hits to feed the extractor (cost knob)
+ARTICLES_PER_PROJECT = 3   # how many search hits to feed the extractor (cost + Google-load knob)
 TRUNC = 3500               # chars of each article sent to the LLM (cost knob)
 
 # extract_fn contract:
@@ -151,7 +151,7 @@ def rss_search(query, editions=(("es", "ES", "ES:es", "centro de datos"),
     and a 12-month recency window. Fetches article text for the top hits."""
     import time
     import feedparser, trafilatura  # noqa: local import so tests never need these installed
-    seen, arts = set(), []
+    seen, arts, net_error = set(), [], False
     for hl, gl, ceid, topic in editions:
         if len(arts) >= ARTICLES_PER_PROJECT:
             break
@@ -159,10 +159,15 @@ def rss_search(query, editions=(("es", "ES", "ES:es", "centro de datos"),
         full = f"{query} {topic} when:365d"
         url = ("https://news.google.com/rss/search?q=" +
                requests.utils.quote(full) + f"&hl={hl}&gl={gl}&ceid={ceid}")
-        fd = feedparser.parse(url)
-        if not fd.entries:            # Google News rate-limits rapid queries → back off once and retry
-            time.sleep(2.0)
+        try:
             fd = feedparser.parse(url)
+            if not fd.entries:        # Google rate-limits rapid queries → back off once and retry
+                time.sleep(3.0)
+                fd = feedparser.parse(url)
+        except Exception:             # RemoteDisconnected etc under throttling — back off, skip edition
+            net_error = True
+            time.sleep(6.0)
+            continue
         for e in fd.entries[:ARTICLES_PER_PROJECT]:
             if len(arts) >= ARTICLES_PER_PROJECT:
                 break
@@ -170,21 +175,20 @@ def rss_search(query, editions=(("es", "ES", "ES:es", "centro de datos"),
             if not link or link in seen:
                 continue
             seen.add(link)
-            # Google News RSS links are ENCODED redirect wrappers — fetching them yields no article
-            # body. Decode to the real URL first (else the LLM sees only the headline and bails).
-            real = link
-            if "news.google.com" in link:
-                try:
+            try:
+                # Google News RSS links are ENCODED redirect wrappers — fetching them yields no
+                # article body. Decode to the real URL first (else the LLM sees only the headline).
+                real = link
+                if "news.google.com" in link:
                     from googlenewsdecoder import new_decoderv1
                     d = new_decoderv1(link)
-                    if d.get("status") and d.get("decoded_url"):
-                        real = d["decoded_url"]
-                    else:
+                    if not (d.get("status") and d.get("decoded_url")):
                         continue
-                except Exception:
-                    continue
-            html = trafilatura.fetch_url(real)
-            text = (trafilatura.extract(html) or "")[:TRUNC] if html else ""
+                    real = d["decoded_url"]
+                html = trafilatura.fetch_url(real)
+                text = (trafilatura.extract(html) or "")[:TRUNC] if html else ""
+            except Exception:
+                continue              # any per-article network hiccup: skip that article, keep going
             if len(text) < 120:
                 continue   # paywalled/unreadable — no usable body, skip rather than feed a title-only stub
             # feedparser gives RFC-822 dates ("Mon, 14 Jul 2026 …"); convert to ISO so recency works
@@ -193,6 +197,10 @@ def rss_search(query, editions=(("es", "ES", "ES:es", "centro de datos"),
             arts.append({"url": real, "title": e.get("title", ""),
                          "source": (e.get("source", {}) or {}).get("title", "google news"),
                          "published": iso, "text": text})
+    # a throttle that produced NO articles must not look like "genuinely no news" (which would get
+    # the project falsely stamped done) — signal it so the caller skips + retries next run.
+    if not arts and net_error:
+        raise RuntimeError("google news throttled (network error, no articles)")
     return arts[:ARTICLES_PER_PROJECT]
 
 
