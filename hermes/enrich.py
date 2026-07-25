@@ -63,6 +63,43 @@ def build_query(project):
     return name.strip()
 
 
+# words that carry no site identity — stripped before deciding whether an article is
+# actually about THIS site rather than the operator's portfolio in general
+GENERIC = {"data", "center", "centre", "centro", "datos", "campus", "dc", "cpd", "proyecto",
+           "project", "de", "del", "la", "el", "en", "los", "las", "y", "nuevo", "nueva",
+           "expansion", "ampliacion", "site", "park", "parque", "tecnologico", "iberian",
+           "spain", "espana", "phase", "fase", "i", "ii", "iii", "iv"}
+
+
+def site_tokens(project):
+    """Tokens that identify this SITE specifically — the project name minus its operator's name
+    and minus boilerplate, plus the region. For 'EdgeMode Mora' that leaves {'mora'}."""
+    name = kb.alias_key(project.get("name") or "")
+    comp = set(kb.alias_key(clean_company(project.get("company")) or "").split())
+    toks = {t for t in name.split() if t and t not in GENERIC and t not in comp and len(t) > 2}
+    reg = kb.alias_key(project.get("region") or "")
+    for t in reg.split():
+        if t and t not in GENERIC and len(t) > 2:
+            toks.add(t)
+    return toks
+
+
+def article_is_about_site(project, article):
+    """True if the article actually references this site (its place name), not merely its operator.
+
+    Without this, a general article about an operator ("EdgeMode plans 300 MW in Spain") gets its
+    figures copied onto EVERY project of that operator — which is how five distinct EdgeMode sites
+    all ended up reading 300 MW. If the project has no distinguishing token at all (name == operator)
+    there is nothing to verify against, so we allow it.
+    """
+    toks = site_tokens(project)
+    if not toks:
+        return True
+    blob = kb.alias_key(f"{article.get('title','')} {article.get('text','')}")
+    words = set(blob.split())
+    return any(t in words for t in toks)
+
+
 def _same_project(con, project, article_mention):
     """Guard: does an article's extracted mention actually refer to THIS project? If it resolves
     to a DIFFERENT existing entity with confidence, the search drifted — reject those facts."""
@@ -93,6 +130,11 @@ def enrich_project(con, project, search_fn, extract_fn, run_id):
                            "municipality": project.get("region"),
                            "lat": project.get("lat"), "lon": project.get("lon")}
                 if not _same_project(con, project, mention):
+                    out["skipped"] += 1
+                    continue
+                # site-attribution guard: the backing article must reference THIS site, not just
+                # the operator — otherwise portfolio-wide figures contaminate every sibling project
+                if not article_is_about_site(project, art):
                     out["skipped"] += 1
                     continue
                 r = ingest.apply_observation(

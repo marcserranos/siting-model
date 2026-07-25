@@ -191,11 +191,39 @@ def export_v2(con, repo=None):
     runs = [{"run_id": r[0], "type": r[1], "at": r[2], "new": r[3], "changed": r[4], "enriched": r[5]}
             for r in con.execute("SELECT run_id,type,finished_at,n_new,n_changed,n_enriched FROM runs "
                                  "ORDER BY started_at DESC LIMIT 20")]
+    # global audit trail — how the knowledge base is being maintained, newest first
+    changelog = [{"ts": ts, "run": run, "entity": ent, "name": nm, "action": ac, "field": f,
+                  "old": o, "new": n, "url": u, "note": nt}
+                 for (ts, run, ent, nm, ac, f, o, n, u, nt) in con.execute(
+                     "SELECT c.ts,c.run_id,c.entity_id,e.canonical_name,c.action,c.attribute,"
+                     "c.old,c.new,c.source_url,c.note FROM changelog c "
+                     "LEFT JOIN entities e ON e.id=c.entity_id ORDER BY c.id DESC LIMIT 120")]
+    # projects the pipeline flagged for a human look (possible duplicates / auto-created)
+    review_queue = [{"id": r[0], "name": r[1], "created": r[2], "note": r[3]}
+                    for r in con.execute(
+                        "SELECT e.id,e.canonical_name,e.created_at,"
+                        "(SELECT note FROM changelog c WHERE c.entity_id=e.id AND c.action='review' "
+                        " ORDER BY c.id DESC LIMIT 1) "
+                        "FROM entities e WHERE e.review=1 ORDER BY e.created_at DESC LIMIT 60")]
     counts = {
         "projects": con.execute("SELECT COUNT(*) FROM entities WHERE lat IS NOT NULL").fetchone()[0],
         "observations": con.execute("SELECT COUNT(*) FROM observations").fetchone()[0],
         "review": con.execute("SELECT COUNT(*) FROM entities WHERE review=1").fetchone()[0],
         "changes": con.execute("SELECT COUNT(*) FROM changelog").fetchone()[0],
     }
+    # candidate duplicate pairs already in the base (e.g. "Cogent Madrid" vs "Cogent Data Center
+    # Madrid"). Surfaced for a human decision — never merged automatically, because some near
+    # pairs are genuinely distinct phases of one campus.
+    duplicates = []
+    try:
+        import resolver
+        names = {r[0]: r[1] for r in con.execute("SELECT id,canonical_name FROM entities")}
+        for sc, a, b, why in resolver.find_duplicates(con, threshold=0.80)[:40]:
+            duplicates.append({"a": a, "b": b, "a_name": names.get(a, a), "b_name": names.get(b, b),
+                               "score": sc, "why": why})
+    except Exception:
+        pass
+
     return {"generated": _now(), "repo": repo, "schema": 2,
-            "counts": counts, "runs": runs, "projects": projects, "news_feed": feed}
+            "counts": counts, "runs": runs, "changelog": changelog, "review_queue": review_queue,
+            "duplicates": duplicates, "projects": projects, "news_feed": feed}

@@ -43,20 +43,30 @@ def tier_for(source):
     """Map a source name/domain to a reliability tier (drives confidence weighting). Shared by
     every module so a source is scored the same wherever it enters the pipeline."""
     s = norm(source)  # strip accents/case so 'Expansión' matches 'expansion'
-    if any(k in s for k in ("reuters", "efe", "europa press", "ap ", "bloomberg")):
+    if not s:
+        return "unverified"
+    # sources arrive either as a domain ('eldiario.es') or a display name ('ABC', 'El Confidencial')
+    if any(k in s for k in ("reuters", "efe ", "agencia efe", "europa press", "europapress",
+                            "bloomberg", "associated press")) or s in ("efe", "ap"):
         return "wire"
-    if "datacenterdynamics" in s or "dcd" in s or "datacenter" in s and "dynamics" in s:
+    if any(k in s for k in ("datacenterdynamics", "data center dynamics", "dcd", "datacenter magazine",
+                            "capacity media", "bisnow")):
         return "trade"
-    if any(k in s for k in ("expansion", "cinco dias", "cincodias", "elpais", "el pais", "elmundo",
-                            "el mundo", "vanguardia", "confidencial", "eleconomista", "abc.es")):
+    if any(k in s for k in ("expansion", "cinco dias", "cincodias", "elpais", "el pais",
+                            "elmundo", "el mundo", "vanguardia", "confidencial", "eleconomista",
+                            "el economista", "eldiario", "el diario", "20minutos", "20 minutos",
+                            "larazon", "la razon", "elespanol", "el espanol", "publico",
+                            "elperiodico", "el periodico", "abc", "rtve", "cadena ser", "invertia",
+                            "okdiario", "libremercado", "voz populi", "vozpopuli")):
         return "national"
-    if any(k in s for k in ("boe", "gob.es", ".gov", "ir.", "investor", "press release", "prnewswire")):
+    if any(k in s for k in ("boe", "gob.es", ".gob", ".gov", "europa.eu", "investor", "prnewswire",
+                            "businesswire", "press release", "comunicado")):
         return "official"
     if s in ("seed", "research", "baxtel"):
         return "research"
-    if any(k in s for k in ("blog", "medium", "reddit", "forum")):
+    if any(k in s for k in ("blog", "medium.com", "reddit", "forum", "wordpress")):
         return "unverified"
-    return "local" if source else "unverified"
+    return "local"
 
 
 def norm(s):
@@ -175,6 +185,13 @@ def derive(observations, locked=None):
         "confidence": confidence,
         "status": status,
         "n_sources": len({o.get("source_url") for o in obs if o.get("source_url")}) or len(obs),
+        # the actual evidence behind the headline — so any figure can be traced to its articles
+        "sources": [{"url": o.get("source_url"), "tier": o.get("source_tier"),
+                     "date": o.get("reported_date")}
+                    for o in sorted(top["obs"], key=lambda o: (o.get("reported_date") or ""), reverse=True)
+                    if o.get("source_url")][:5],
+        # competing values we did NOT adopt, kept visible rather than silently discarded
+        "alternatives": [{"value": b["value"], "n": len(b["obs"])} for b in buckets[1:4]],
     }
     if numeric:
         vals = [o["value_num"] for o in obs if o.get("value_num") is not None]
