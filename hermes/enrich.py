@@ -187,7 +187,7 @@ def estimate_cost(n_projects, *, articles=ARTICLES_PER_PROJECT, trunc=TRUNC,
 
 # ---------------- production defaults (used by dc_watch.py, not by tests) ----------------
 def rss_search(query, editions=(("es", "ES", "ES:es", "centro de datos"),
-                                 ("en", "US", "US:en", "data center"))):
+                                 ("en", "US", "US:en", "data center")), window="365d"):
     """Query Google News in Spanish AND English editions and merge (dedup by URL), so international
     trade press covering Spanish projects is captured too. Each edition appends its own topic term
     and a 12-month recency window. Fetches article text for the top hits."""
@@ -198,7 +198,7 @@ def rss_search(query, editions=(("es", "ES", "ES:es", "centro de datos"),
         if len(arts) >= ARTICLES_PER_PROJECT:
             break
         time.sleep(1.2)   # politeness — Google News returns empty feeds under rapid-fire querying
-        full = f"{query} {topic} when:365d"
+        full = f"{query} {topic}" + (f" when:{window}" if window else "")
         url = ("https://news.google.com/rss/search?q=" +
                requests.utils.quote(full) + f"&hl={hl}&gl={gl}&ceid={ceid}")
         try:
@@ -243,6 +243,11 @@ def rss_search(query, editions=(("es", "ES", "ES:es", "centro de datos"),
     # the project falsely stamped done) — signal it so the caller skips + retries next run.
     if not arts and net_error:
         raise RuntimeError("google news throttled (network error, no articles)")
+    # Most of the base is older than a year (colos operating since well before the AI build-out),
+    # so a 12-month window returns nothing for them. Fall back to an all-time search once rather
+    # than concluding the project has no coverage.
+    if not arts and window:
+        return rss_search(query, editions, window=None)
     return arts[:ARTICLES_PER_PROJECT]
 
 
