@@ -1,8 +1,14 @@
-# Spain BYOP Datacenter Siting Model
+# Iberian Datacenter Intelligence
 
-An interactive model that identifies and ranks sites in Spain for **bring-your-own-power datacenters** — behind-the-meter solar + battery + compute, sited to never enter the grid interconnection queue.
+A live intelligence platform for Iberian datacenter build-out — **tracked projects, capacity, capital and permitting, continuously maintained from the press** — built around an original **bring-your-own-power siting model**: behind-the-meter solar + battery + compute, sited to never enter the grid interconnection queue.
 
-![status](https://img.shields.io/badge/status-v1-informational) *Built July 2026.*
+**Live: https://marcserranos.github.io/spain-dc-map/**
+
+![status](https://img.shields.io/badge/status-v2-informational) *Built July 2026.*
+
+Five views over one knowledge base: **Map** (siting model + projects) · **Projects** (sortable pipeline table) · **Intel** (ingested articles with source tiers) · **Analytics** (capacity, capital, geography, momentum) · **Audit** (run ledger, change history, disputed figures, candidate duplicates).
+
+Every figure on screen traces back to the article it came from. Where outlets disagree, the platform shows the range rather than flip-flopping between values, and flags what it is unsure about instead of guessing. See [GUIDE.md](GUIDE.md) Part 9.5 for how that works.
 
 ## The thesis
 

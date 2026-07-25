@@ -1,6 +1,10 @@
-# The Complete Guide to the Spain BYOP Siting Model
+# The Complete Guide to Iberian Datacenter Intelligence
 
 *A plain-language, end-to-end walkthrough of everything this project is, where every number comes from, what every acronym means, and why each piece exists. Written so you can read it top to bottom once and then explain the whole thing to anyone.*
+
+The product is an **intelligence platform** for Iberian datacenter build-out — tracked projects,
+capacity, capital and permitting, continuously maintained from the press — with an original
+**behind-the-meter (BYOP) solar siting model** as its analytical core.
 
 Live site: **https://marcserranos.github.io/spain-dc-map/**
 
@@ -9,8 +13,11 @@ Live site: **https://marcserranos.github.io/spain-dc-map/**
 ## How to read this guide
 
 - **Part 0** is the 60-second mental model. If you read nothing else, read that.
-- **Parts 1–7** are the siting model (the map, the scores, the money math) — the thing a visitor actually sees.
-- **Parts 8–10** are the machinery behind it: the datacenter data, the live news pipeline ("Hermes"), and how it's all hosted.
+- **Part 2** is the tour of the product itself — the five views and what each one answers.
+- **Parts 1–7** are the siting model (the map, the scores, the money math) — the analytical core.
+- **Parts 8–10** are the machinery behind it: the datacenter data, the live intelligence pipeline
+  ("Hermes"), and how it's all hosted. **Part 9.5 is the one to read** if you only read one piece of
+  the machinery — it is how the knowledge base keeps itself honest.
 - **Part 11** is a glossary — every acronym in one place. If a term ever trips you up, jump there.
 - **Part 12** is the honest limitations list — the stuff to say *before* someone points it out. This is the most important part for the interview.
 
@@ -24,7 +31,12 @@ There are really **two systems** bolted together:
 
 **System A — the siting model (static).** A one-time data pipeline (Python, on your Mac) fetched ~12 public datasets, chopped Spain into a grid of ~5,300 squares, and tagged each square with numbers (sunshine, terrain, environmental protection, wind, etc.). All those numbers were baked into one file (`cells.json`). The website loads that file and does *all the scoring live in your browser* — every time you move a slider, your laptop re-scores all 5,300 cells in a few milliseconds. **There is no server doing calculations.** The map is just a very smart spreadsheet with a nice face.
 
-**System B — the live intelligence pipeline (dynamic).** A cheap rented Linux computer in Germany (the "Hermes VM") wakes up once a day, reads Spanish news, uses a cheap AI model (DeepSeek) to pull out facts about new datacenter projects, stores them in a small database, and publishes an updated `dc_live.json` file to GitHub. The website loads *that* file too, and overlays the fresh news onto the map. This is the part that makes the project feel *alive* rather than a one-off screenshot.
+**System B — the live intelligence pipeline (dynamic).** A cheap rented Linux computer in Germany (the "Hermes VM") wakes up once a day, reads Spanish and international news, uses a cheap AI model (DeepSeek) to pull out facts about datacenter projects, resolves each mention to a canonical project, and publishes an updated `dc_live.json` to GitHub. The website loads *that* file too. This is the part that makes the project *ongoing intelligence* rather than a one-off screenshot.
+
+The important thing about System B is **how it stores what it learns** (Part 9.5): facts are never
+overwritten, only appended with their source, so every number on screen can be traced to the
+article it came from, disagreements between outlets are shown as a range instead of flip-flopping
+week to week, and anything the system is unsure about is flagged for a human rather than guessed.
 
 ```
         SYSTEM A (built once, static)                    SYSTEM B (runs daily, live)
@@ -67,13 +79,37 @@ That's the whole thing. Everything below is detail.
 
 ## Part 2 — What you actually see on screen
 
-The page has **three columns**:
+The product is an **intelligence platform with five views**, selected from the left nav rail. The
+map is the hero, but it is one view among several — the knowledge base underneath is the product.
 
-- **Left panel (controls):** project scale, score weights, hard gates, map-view selector, overlay toggles, an editable assumptions panel, a "reality check" chart, and a ranked list of the top sites.
-- **Center (the map):** Spain covered in a grid of colored squares (the model), plus dots for real datacenters, solar farms, and substations.
-- **Right panel (detail):** appears when you click a cell or a datacenter. Shows the full dossier for that spot.
+Across the top sits an **executive KPI strip**: tracked projects, disclosed capacity, announced
+capital, pre-operational capacity, and the pipeline split by stage. Each figure states its own
+coverage ("23 of 210 disclose") rather than implying the whole market is measured.
 
-Let's go through the left panel top to bottom, because that's the model's "control room."
+| View | What it answers |
+|------|-----------------|
+| **Map** | *Where?* The siting model grid + every tracked project, coloured by lifecycle stage |
+| **Projects** | *What exists?* A sortable, filterable table of every project with capacity, capital, stage and source count |
+| **Intel** | *What just happened?* Every ingested article with its outlet, reliability tier and the project it was attributed to |
+| **Analytics** | *What does it add up to?* Pipeline by stage, capacity and projects by region, most active operators, largest projects, media attention over time, and disclosure coverage |
+| **Audit** | *Can I trust it?* Run ledger, change history, disputed figures, review queue and candidate duplicates |
+
+### 2.0 The Map view's three columns
+
+- **Left panel (controls):** project scale, map-layer selector, layer toggles, project filters by
+  stage, and the ranked top-sites list.
+- **Centre (the map):** Spain covered in the model's coloured grid, plus a dot per real project —
+  dot size carries disclosed capacity, dot colour carries lifecycle stage.
+- **Right panel (detail):** appears when you click a cell or a project. For a cell it is the full
+  siting dossier; for a project it is the intelligence dossier — capacity and capital with their
+  confidence, the articles behind each figure, change history, and the model score at that location.
+
+**Progressive disclosure.** The expert controls — 11 score weights, 2 hard gates, 10 cost
+assumptions, and the validation chart — live behind the **⚙ Model settings** button rather than
+crowding the default screen. Nothing was removed; a non-technical viewer simply is not shown 25
+sliders before they have understood the map.
+
+Let's go through the model's "control room" top to bottom.
 
 ### 2.1 Project scale (the four modes)
 
@@ -155,7 +191,7 @@ Turning this on drops a **draggable, true-to-scale drawing** of the selected pro
 
 The tooltip on the handle shows the totals and the land-to-building ratio. It **resizes automatically when you change project scale** (10 MW edge → 1 GW), and it reuses the model's exact sizing formulas, so the drawn area always matches the build-math panel. The headline it makes visceral: a 1 GW solar campus needs ~104 km² (about the size of Barcelona) to power buildings covering ~0.3 km² — a **346:1** ratio — and only ~25% of that land is actual panels; the rest is inter-row spacing, roads and setbacks. (Implemented as an isolated overlay in `app.js` — `footGeom` / `drawFoot` / `toggleFoot` — it does not touch the scoring engine.)
 
-### 2.6 Assumptions panel (editable, live)
+### 2.6 Cost assumptions (editable, live — in Model settings)
 
 A collapsible grid of **number boxes** — every financial assumption in the model, editable on the spot. Change "PV M€/MWp" from 0.55 to 0.60 and *every cost number on the entire page recalculates instantly.* This exists so that when an expert says "your solar capex is too low," you can change it in front of them and show the effect live, instead of arguing. Full list of these in Part 5.
 
@@ -255,7 +291,7 @@ When you click a cell, the right panel shows "BYOP build math" and "Power capex.
 
 ### 5.2 The cost (capex) — with editable assumptions
 
-**Capex** = capital expenditure = the upfront build cost. Each piece = quantity × a per-unit cost from the Assumptions panel:
+**Capex** = capital expenditure = the upfront build cost. Each piece = quantity × a per-unit cost from the cost-assumptions panel (Model settings):
 
 | Assumption | Default | Meaning |
 |-----------|---------|---------|
@@ -345,9 +381,8 @@ A cheap rented Linux server (**Hetzner CX23**, ~€7/month, in Germany) — the 
 1. **Collect.** Reads 4 RSS feeds (3 Google News searches in Spanish for "centro de datos" / "data center España" / "hiperescala", + Datacenter Dynamics España). Keyword-filters, drops anything already seen. Caps at 40 articles/day — a hard budget cap.
 2. **Fetch text.** For each article, pulls the full text with `trafilatura`. Google News wraps links in a redirect, so there's a decoder for that. If an article is paywalled/undecodable, it falls back to just the headline + RSS snippet.
 3. **Extract (the AI step).** Sends the articles to **DeepSeek V4 Flash** (a very cheap Chinese LLM) in batches of 8, asking for **structured JSON**: for each article — is it about a *real, concrete Spanish datacenter project*? If so, extract project name, company, municipality, province, event type (land purchase / announcement / permit / construction start / operational / expansion / deal / cancelled), MW, €M investment, a ≤25-word summary, and a confidence score.
-4. **Reconcile (the smart step).** For each extracted fact, it fuzzy-matches against the existing database of projects (by name + company + municipality). Then:
-   - **New project?** Geocode the municipality (via OpenStreetMap Nominatim) to get coordinates, insert it, flag it "unreviewed."
-   - **Existing project?** Update it — but with rules: status only ever moves *forward* (announced→construction→operating, never backward); MW/investment numbers only update if confidence ≥0.7 *and* the change is >15% (avoids noise). **Every change is logged with its source article** — so each card has a traceable history of what changed, when, and why. This is the "cards self-update and are traceable" feature you asked for.
+4. **Resolve identity, then reconcile (the smart step).** See Part 9.6 — this is where v2 differs
+   most from the original pipeline.
 5. **Publish.** Exports the whole knowledge base to `dc_live.json` and pushes it to the GitHub repo via the **GitHub Contents API** (no `git` needed, no open ports on the VM — keeps the firewall SSH-only).
 6. **Notify.** Sends you a **Telegram** digest: how many articles, how many relevant, new projects, changes, total count.
 
@@ -359,16 +394,66 @@ A cheap rented Linux server (**Hetzner CX23**, ~€7/month, in Germany) — the 
 
 ### 9.4 The live-trigger demo
 
-Normally the pipeline runs once a day. But the site has a **"⚡ Trigger ingestion now"** button (in the news feed panel). Clicking it:
+Normally the pipeline runs once a day. But the site has a **"⚡ Trigger ingestion"** button (Audit view → Operator tools). Clicking it:
 1. Writes a tiny `trigger.json` to GitHub (using a token stored only in your browser).
 2. The VM polls that file every 2 minutes (a second cron, `trigger_poll.sh`), sees the new timestamp, and runs the pipeline immediately.
 3. The browser polls for fresh data and auto-reloads when it appears (~2–4 min).
 
 This lets you **demo the whole live pipeline running, on demand, in front of someone** — click, wait a couple minutes, watch a new datacenter appear on the map from a news article. That's a genuinely impressive live demo.
 
-### 9.5 How live data merges onto the map
+### 9.5 The v2 knowledge system (identity, provenance, and not flip-flopping)
 
-When the page loads, `app.js` fetches `dc_live.json` and merges each live project onto the baked datacenter markers — matching by proximity + name tokens. Matched projects get their news trail and change log attached (visible when you click the dot); unmatched new ones appear as fresh markers flagged "unreviewed — auto-created from news." The "📰 News feed" line in the left panel shows the count and last-updated date.
+The first pipeline worked but had three structural problems, all visible in the data it produced.
+v2 fixes each one. This is the part worth explaining slowly, because it is the difference between
+"a script that scrapes news" and "a knowledge base."
+
+**Problem 1 — identity.** The same project appears in the press as the town, the operator, the
+codename, or a nearby village, so the old fuzzy match kept creating duplicates. v2 resolves every
+incoming mention through a **funnel that spends the cheapest signal first**:
+
+1. **Alias lookup** (free) — every surface name ever seen is stored, so a repeat mention matches instantly.
+2. **Geographic blocking** (free) — only projects within ~25 km are even considered. For a physical
+   asset, proximity is a stronger signal than the name.
+3. **Name/operator similarity** (free) — scored within that handful of candidates.
+4. **One model call** — *only* for the genuinely ambiguous middle band. Because steps 1–3 resolve
+   most mentions, the paid step stays rare.
+
+Anything still uncertain is **created and flagged for review**, never silently merged into an
+existing project and never silently duplicated. Every resolved surface name is added to the alias
+table, so the system gets cheaper and more accurate the longer it runs.
+
+**Problem 2 — flip-flopping numbers.** The old model stored one value per field and overwrote it,
+so an investment figure could read €500M one week, €1bn the next, then €500M again. v2 never
+overwrites: each source claim is appended as an **observation** (value, source URL, outlet tier,
+reported date), and the displayed figure is *derived* from all of them, weighted by source
+reliability, recency and corroboration. The headline only moves when a new value's accumulated
+evidence **overtakes** the incumbent — and the full disagreement is shown as a range
+(`€500M · 500–1,000`) instead of being hidden. Values that are genuinely close are marked
+**contested** rather than silently resolved.
+
+**Problem 3 — provenance.** Every figure now carries the articles behind it, their outlet tier and
+date, plus the competing values it beat. Nothing in the interface is an unattributable number.
+
+**Human authority.** A field you correct by hand is *locked*: the pipeline may record that a source
+disagrees, but it cannot overwrite you. Human decisions about identity ("these two are the same" /
+"these are different") are consulted before any automated matching.
+
+**Enrichment.** The news loop only ever learns about projects that make the news, which left most
+of the base as name-and-location only. A second loop works the other way round: it takes the
+**stalest projects** and goes looking for them, in Spanish and English, filling gaps the news never
+covered. It deprioritises anything the news loop just touched, so the two never compete. A
+site-attribution guard requires the backing article to reference *that specific site* — without it,
+a general article about an operator ("EdgeMode plans 300 MW in Spain") gets its figures copied onto
+every one of that operator's projects, which is exactly how five distinct EdgeMode sites all came
+to read 300 MW in the inherited data.
+
+**What it costs.** The full one-time backfill of ~200 projects is about **$0.15**; a rolling
+5-projects-per-day refresh is about **$0.11/month** on top of the existing daily watch. The whole
+system stays under ~$1.50/month.
+
+### 9.6 How live data merges onto the map
+
+When the page loads, `app.js` fetches `dc_live.json` and merges each live project onto the baked datacenter markers — matching by proximity + name tokens. Matched projects get their news trail and change log attached (visible when you click the dot); unmatched new ones appear as fresh markers flagged "unreviewed — auto-created from news." The Intel view lists every ingested article, and the header stamp shows when the knowledge base was last refreshed.
 
 ---
 
