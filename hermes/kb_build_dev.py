@@ -57,10 +57,28 @@ def add_alias(con, alias_raw, eid, source):
                 "VALUES(?,?,?,?,?)", (k, alias_raw, eid, source, date.today().isoformat()))
 
 
+def _writer_pid_using(path):
+    """Best-effort check for another process with this file open (macOS/Linux only).
+    Guards against the exact footgun that bit this project once already: rebuilding
+    (delete + recreate) dc_kb_dev.sqlite while enrich_live.py still holds it open mid-run
+    caused 'attempt to write a readonly database' and silently corrupted that run's counts."""
+    try:
+        import subprocess
+        r = subprocess.run(["lsof", "-t", path], capture_output=True, text=True, timeout=5)
+        pids = [p for p in r.stdout.split() if p.strip() and int(p) != os.getpid()]
+        return pids[0] if pids else None
+    except Exception:
+        return None   # lsof unavailable — don't block the rebuild over a missing tool
+
+
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else "../../spain-dc-map/data/dc_live.json"
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), "dc_kb_dev.sqlite")
     if os.path.exists(out):
+        pid = _writer_pid_using(out)
+        if pid:
+            sys.exit(f"refusing to rebuild {out} — process {pid} has it open "
+                     f"(likely enrich_live.py mid-run). Stop it first, or delete manually if stale.")
         os.remove(out)
     data = json.load(open(src))
     projects = data.get("projects", [])
