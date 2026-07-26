@@ -175,18 +175,57 @@ def resolve(con, mention, llm_confirm=None):
 def find_duplicates(con, threshold=LOW):
     """One-off sweep over EXISTING entities to surface likely dupes already in the KB (the
     'entries that already exist but weren't cross-checked' problem), respecting 'different'
-    overrides. Returns pairs sorted by score for human review — never auto-merges."""
+    overrides. Returns pairs sorted by score for human review — never auto-merges.
+
+    Geo-bucketed rather than all-pairs: two records describing the same physical site always
+    have close coordinates, so comparing every entity against every other one is wasted work that
+    gets expensive fast (measured 135s at ~1,700 entities — this is called on every export_v2(),
+    i.e. every daily publish). Bucketing by whole-degree lat/lon and only scoring entities in the
+    3x3 neighbourhood (a >=300km-wide window, comfortably covering the R_BLOCK_KM=25km radius any
+    true duplicate could be found within) keeps this near-linear as the KB grows, while producing
+    the identical candidate set for real-world data (entities are never so densely packed into
+    one ~111km grid cell that the fallback below triggers in practice)."""
     ents = load_entities(con)
     diff = {(a, b) for a, b, dec in
             con.execute("SELECT entity_a,entity_b,decision FROM overrides") if dec == "different"
             for (a, b) in [(a, b), (b, a)]}
+
+    buckets, no_coord = {}, []
+    for e in ents:
+        if e.get("lat") is None or e.get("lon") is None:
+            no_coord.append(e)   # can't be geo-bucketed — compared against everything below
+        else:
+            buckets.setdefault((int(e["lat"]), int(e["lon"])), []).append(e)
+
+    seen_pairs = set()
     pairs = []
-    for i, e in enumerate(ents):
-        m = {"name": e["canonical_name"], "company": e.get("company"),
-             "municipality": e.get("region"), "lat": e.get("lat"), "lon": e.get("lon")}
-        for f in ents[i + 1:]:
-            if (e["id"], f["id"]) in diff:
+    for (by, bx), cell in buckets.items():
+        neighbours = [f for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                     for f in buckets.get((by + dy, bx + dx), [])] + no_coord
+        for e in cell:
+            m = {"name": e["canonical_name"], "company": e.get("company"),
+                 "municipality": e.get("region"), "lat": e.get("lat"), "lon": e.get("lon")}
+            for f in neighbours:
+                if f["id"] == e["id"]:
+                    continue
+                key = frozenset((e["id"], f["id"]))
+                if key in seen_pairs or (e["id"], f["id"]) in diff:
+                    continue
+                seen_pairs.add(key)
+                sc, rs = score(m, f)
+                if sc >= threshold:
+                    pairs.append((round(sc, 3), e["id"], f["id"], rs))
+
+    # the no_coord pool is compared against every bucketed entity above; still needs comparing
+    # against itself (kept as a plain nested loop — this pool is expected to be small: it's only
+    # entities where geocoding failed or was never attempted).
+    for i, e in enumerate(no_coord):
+        m = {"name": e["canonical_name"], "company": e.get("company"), "municipality": e.get("region")}
+        for f in no_coord[i + 1:]:
+            key = frozenset((e["id"], f["id"]))
+            if key in seen_pairs or (e["id"], f["id"]) in diff:
                 continue
+            seen_pairs.add(key)
             sc, rs = score(m, f)
             if sc >= threshold:
                 pairs.append((round(sc, 3), e["id"], f["id"], rs))
