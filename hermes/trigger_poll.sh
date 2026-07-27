@@ -5,7 +5,7 @@
 cd "$(dirname "$0")"
 set -a; source .env 2>/dev/null; set +a
 [ -z "$GH_REPO" ] && exit 0
-TS=$(curl -sf -m 15 "https://raw.githubusercontent.com/$GH_REPO/main/web/data/trigger.json?nocache=$(date +%s)" \
+TS=$(curl -sf -m 15 "https://raw.githubusercontent.com/$GH_REPO/main/data/trigger.json?nocache=$(date +%s)" \
      | grep -o '"requested":"[^"]*"' | cut -d'"' -f4)
 [ -z "$TS" ] && exit 0
 LAST=$(cat .last_trigger 2>/dev/null)

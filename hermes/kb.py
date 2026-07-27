@@ -215,7 +215,19 @@ def connect(path):
     con = sqlite3.connect(path)
     con.execute("PRAGMA foreign_keys=ON")
     con.executescript(load_schema())
+    _migrate(con)
     return con
+
+
+def _migrate(con):
+    """Idempotent column additions — `CREATE TABLE IF NOT EXISTS` in the schema script above
+    only creates tables that don't exist yet; it never alters ones that do, so a new column
+    added to kb_schema.sql needs an explicit ALTER here to reach already-deployed databases
+    (this file runs on both the dev machine and the production VM via the same kb.connect())."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(entities)")}
+    if "merged_into" not in cols:
+        con.execute("ALTER TABLE entities ADD COLUMN merged_into TEXT REFERENCES entities(id)")
+        con.commit()
 
 
 if __name__ == "__main__":

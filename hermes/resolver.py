@@ -61,7 +61,7 @@ def load_entities(con):
     for r in con.execute("SELECT id,canonical_name,company_hint,region,lat,lon,status FROM ("
                          "SELECT e.*, (SELECT value_text FROM observations o WHERE o.entity_id=e.id "
                          "AND o.attribute='company' ORDER BY id DESC LIMIT 1) AS company_hint "
-                         "FROM entities e)"):
+                         "FROM entities e WHERE e.merged_into IS NULL)"):
         ents.append({"id": r[0], "canonical_name": r[1], "company": r[2], "region": r[3],
                      "lat": r[4], "lon": r[5], "status": r[6], "aliases": []})
     by_id = {e["id"]: e for e in ents}

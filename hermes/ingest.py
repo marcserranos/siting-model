@@ -97,6 +97,52 @@ def create_entity(con, mention, run_id, review=1, existing_slugs=None):
     return eid
 
 
+def merge_entities(con, keep_id, drop_id, run_id, note=None):
+    """Human-confirmed duplicate merge: `drop_id` is folded into `keep_id`.
+
+    Nothing is deleted — every observation, news row and alias moves over (append-only
+    provenance survives the merge intact), `drop_id`'s own name becomes an alias of `keep_id`
+    so future mentions still resolve correctly, and the entity row itself is kept but flagged
+    `merged_into` so export_v2() (WHERE merged_into IS NULL) and the resolver's candidate
+    loading both stop surfacing it, while the audit trail — who it was, what it said, why it
+    was merged — stays queryable forever."""
+    if keep_id == drop_id:
+        raise ValueError("cannot merge an entity into itself")
+    rows = con.execute("SELECT id, canonical_name, merged_into FROM entities WHERE id IN (?,?)",
+                       (keep_id, drop_id)).fetchall()
+    found = {r[0]: r for r in rows}
+    if keep_id not in found or drop_id not in found:
+        raise ValueError(f"entity not found: {keep_id if keep_id not in found else drop_id}")
+    if found[keep_id][2] is not None:
+        raise ValueError(f"{keep_id} is itself merged into {found[keep_id][2]} — merge into that instead")
+    if found[drop_id][2] is not None:
+        return  # already merged (e.g. a retried/duplicate decision) — nothing to do, not an error
+
+    con.execute("UPDATE observations SET entity_id=? WHERE entity_id=?", (keep_id, drop_id))
+    con.execute("UPDATE news SET entity_id=? WHERE entity_id=?", (keep_id, drop_id))
+    # aliases has PRIMARY KEY(alias, entity_id) — drop_id and keep_id can share a normalized
+    # alias (e.g. both derived from the same company name), so re-pointing blindly would
+    # collide. Drop rows that already exist on keep_id; re-point the rest.
+    con.execute("DELETE FROM aliases WHERE entity_id=? AND alias IN "
+               "(SELECT alias FROM aliases WHERE entity_id=?)", (drop_id, keep_id))
+    con.execute("UPDATE aliases SET entity_id=? WHERE entity_id=?", (keep_id, drop_id))
+    add_alias(con, keep_id, found[drop_id][1], "merge", when=date.today().isoformat())
+    con.execute("UPDATE entities SET merged_into=?, updated_at=?, updated_by=? WHERE id=?",
+                (keep_id, _now(), run_id, drop_id))
+    _changelog(con, drop_id, "merge", run_id, note=f"merged into {keep_id}" + (f": {note}" if note else ""))
+    _changelog(con, keep_id, "merge", run_id, note=f"absorbed {drop_id}" + (f": {note}" if note else ""))
+    con.commit()
+
+
+def set_review(con, eid, cleared, run_id, note=None):
+    """Human clears (or re-flags) a review-queue item. Never touches the record's data —
+    only the provisional flag — so approving is a statement of trust, not an edit."""
+    con.execute("UPDATE entities SET review=?, updated_at=?, updated_by=? WHERE id=?",
+                (0 if cleared else 1, _now(), run_id, eid))
+    _changelog(con, eid, "review", run_id, note=note or ("approved" if cleared else "re-flagged"))
+    con.commit()
+
+
 def apply_observation(con, eid, attr, *, value_num=None, value_text=None, unit=None,
                       source_url=None, tier="unverified", reported_date=None, run_id=None):
     """Append a fact and move the headline only if the evidence warrants it.
@@ -155,7 +201,7 @@ def export_v2(con, repo=None):
     projects = []
     for eid, name, region, lat, lon, review, updated, src in con.execute(
             "SELECT id,canonical_name,region,lat,lon,review,updated_at,src FROM entities "
-            "WHERE lat IS NOT NULL"):
+            "WHERE lat IS NOT NULL AND merged_into IS NULL"):
         fields = {}
         for attr in TRACKED:
             h = headline(con, eid, attr)
@@ -204,11 +250,14 @@ def export_v2(con, repo=None):
                         "SELECT e.id,e.canonical_name,e.created_at,"
                         "(SELECT note FROM changelog c WHERE c.entity_id=e.id AND c.action='review' "
                         " ORDER BY c.id DESC LIMIT 1) "
-                        "FROM entities e WHERE e.review=1 ORDER BY e.created_at DESC LIMIT 60")]
+                        "FROM entities e WHERE e.review=1 AND e.merged_into IS NULL "
+                        "ORDER BY e.created_at DESC LIMIT 60")]
     counts = {
-        "projects": con.execute("SELECT COUNT(*) FROM entities WHERE lat IS NOT NULL").fetchone()[0],
+        "projects": con.execute("SELECT COUNT(*) FROM entities WHERE lat IS NOT NULL "
+                                "AND merged_into IS NULL").fetchone()[0],
         "observations": con.execute("SELECT COUNT(*) FROM observations").fetchone()[0],
-        "review": con.execute("SELECT COUNT(*) FROM entities WHERE review=1").fetchone()[0],
+        "review": con.execute("SELECT COUNT(*) FROM entities WHERE review=1 "
+                              "AND merged_into IS NULL").fetchone()[0],
         "changes": con.execute("SELECT COUNT(*) FROM changelog").fetchone()[0],
     }
     # candidate duplicate pairs already in the base (e.g. "Cogent Madrid" vs "Cogent Data Center

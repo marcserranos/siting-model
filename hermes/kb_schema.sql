@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS entities(
   created_by     TEXT,                       -- run_id | 'seed' | 'human'
   updated_at     TEXT,
   updated_by     TEXT,
-  last_enriched  TEXT                        -- NULL = never; drives the rolling enrichment queue
+  last_enriched  TEXT,                       -- NULL = never; drives the rolling enrichment queue
+  merged_into    TEXT REFERENCES entities(id) -- NULL = live; set = merged away, kept for audit trail
 );
 
 -- ---- surface names → entity. The alias hit-rate is what keeps LLM dedup calls rare. ----
