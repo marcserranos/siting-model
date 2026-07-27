@@ -12,4 +12,4 @@ LAST=$(cat .last_trigger 2>/dev/null)
 [ "$TS" = "$LAST" ] && exit 0
 echo "$TS" > .last_trigger
 echo "$(date -u +%FT%TZ) manual trigger $TS" >> dc_watch.log
-flock -n /tmp/dc_watch.lock .venv/bin/python dc_watch.py >> cron.log 2>&1
+flock -n /tmp/dc_watch.lock .venv/bin/python dc_watch2.py --enrich 5 >> cron.log 2>&1
